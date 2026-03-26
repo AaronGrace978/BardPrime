@@ -23,6 +23,7 @@ export default function App() {
   const hasElevenlabsKey = useStore((s) => s.hasElevenlabsKey);
   const hasLlmKey = useStore((s) => s.hasLlmKey);
   const musicModel = useStore((s) => s.musicModel);
+  const llmProvider = useStore((s) => s.llmProvider);
   const setEmotions = useStore((s) => s.setEmotions);
   const setGenres = useStore((s) => s.setGenres);
   const setHasElevenlabsKey = useStore((s) => s.setHasElevenlabsKey);
@@ -31,18 +32,25 @@ export default function App() {
   const setComposeProgress = useStore((s) => s.setComposeProgress);
   const setLastResult = useStore((s) => s.setLastResult);
   const setMusicModel = useStore((s) => s.setMusicModel);
+  const setLlmProvider = useStore((s) => s.setLlmProvider);
 
   useEffect(() => {
     (async () => {
       try {
-        const [emo, gen, el, llm, model] = await Promise.all([
-          api.getEmotions(), api.getGenres(), api.hasElevenlabsKey(), api.hasLlmKey(), api.getMusicModel(),
+        const [emo, gen, el, llm, model, llmCfg] = await Promise.all([
+          api.getEmotions(), api.getGenres(), api.hasElevenlabsKey(), api.hasLlmKey(), api.getMusicModel(), api.getLlmConfig(),
         ]);
         if (emo.emotions) setEmotions(emo.emotions);
         if (gen.genres) setGenres(gen.genres);
         setHasElevenlabsKey(el);
         setHasLlmKey(llm);
         if (model) setMusicModel(model);
+        if (llmCfg) {
+          try {
+            const cfg = JSON.parse(llmCfg);
+            if (cfg.provider) setLlmProvider(cfg.provider);
+          } catch {}
+        }
       } catch {}
     })();
   }, []);
@@ -91,7 +99,7 @@ export default function App() {
             }`}>
               <div className={`status-dot ${hasLlmKey ? "status-active" : "status-inactive"}`} />
               <Brain className="w-3 h-3" />
-              <span>LLM</span>
+              <span>{({deepseek: "DeepSeek", openai: "OpenAI", ollama: "Ollama"} as Record<string, string>)[llmProvider] || "LLM"}</span>
             </div>
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${
               hasElevenlabsKey ? "bg-amber-500/10 border-amber-500/30 text-amber-400" : "bg-bard-800 border-bard-700/50 text-bard-500"

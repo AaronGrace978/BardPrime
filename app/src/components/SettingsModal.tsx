@@ -20,14 +20,17 @@ export function SettingsModal() {
   const setHasLlmKey = useStore((s) => s.setHasLlmKey);
   const musicModel = useStore((s) => s.musicModel);
   const setMusicModel = useStore((s) => s.setMusicModel);
+  const storedProvider = useStore((s) => s.llmProvider);
+  const setLlmProvider = useStore((s) => s.setLlmProvider);
 
   const [elKey, setElKey] = useState("");
   const [llmKey, setLlmKey] = useState("");
   const [finetuneId, setFinetuneId] = useState(musicModel);
-  const [provider, setProvider] = useState<LLMProvider>("ollama");
+  const [provider, setProvider] = useState<LLMProvider>((storedProvider || "ollama") as LLMProvider);
   const [ollamaHost, setOllamaHost] = useState("http://localhost:11434");
   const [ollamaModel, setOllamaModel] = useState("llama3");
   const [saving, setSaving] = useState(false);
+  const [llmSaved, setLlmSaved] = useState(false);
 
   const saveEl = async () => {
     if (!elKey.trim()) return;
@@ -46,13 +49,36 @@ export function SettingsModal() {
   };
 
   const saveLlm = async () => {
-    if (provider === "ollama") {
-      setHasLlmKey(true);
-      return;
-    }
-    if (!llmKey.trim()) return;
     setSaving(true);
-    try { await api.setLlmKey(llmKey); setHasLlmKey(true); setLlmKey(""); } catch {}
+    try {
+      const baseUrls: Record<LLMProvider, string> = {
+        deepseek: "https://api.deepseek.com/v1",
+        openai: "https://api.openai.com/v1",
+        ollama: "",
+      };
+      const defaultModels: Record<LLMProvider, string> = {
+        deepseek: "deepseek-chat",
+        openai: "gpt-4o",
+        ollama: "",
+      };
+      const config = JSON.stringify({
+        provider,
+        base_url: baseUrls[provider],
+        model: defaultModels[provider],
+        ollama_host: ollamaHost,
+        ollama_model: ollamaModel,
+      });
+      await api.setLlmConfig(config);
+      setLlmProvider(provider);
+
+      if (provider !== "ollama" && llmKey.trim()) {
+        await api.setLlmKey(llmKey);
+        setLlmKey("");
+      }
+      setHasLlmKey(true);
+      setLlmSaved(true);
+      setTimeout(() => setLlmSaved(false), 2000);
+    } catch {}
     setSaving(false);
   };
 
@@ -119,8 +145,9 @@ export function SettingsModal() {
                     <Server className="w-3.5 h-3.5" />
                     Make sure Ollama is running locally. No API key needed.
                   </div>
-                  <button onClick={saveLlm}
-                    className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg">
+                  {llmSaved && <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Config saved!</div>}
+                  <button onClick={saveLlm} disabled={saving}
+                    className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg disabled:opacity-50">
                     Save Ollama Config
                   </button>
                 </motion.div>
@@ -128,14 +155,16 @@ export function SettingsModal() {
                 <motion.div key="api" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   className="space-y-3 p-4 bg-bard-800/40 rounded-xl border border-bard-700/30">
                   <div className="flex items-center gap-2">
-                    {hasLlmKey ? (
+                    {llmSaved ? (
+                      <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Config saved!</div>
+                    ) : hasLlmKey && storedProvider === provider ? (
                       <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Key saved</div>
                     ) : (
-                      <div className="flex items-center gap-1.5 text-amber-400 text-xs"><AlertCircle className="w-3.5 h-3.5" /> No key</div>
+                      <div className="flex items-center gap-1.5 text-amber-400 text-xs"><AlertCircle className="w-3.5 h-3.5" /> Enter API key for {provider === "deepseek" ? "DeepSeek" : "OpenAI"}</div>
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <input type="password" className="input text-sm flex-1" placeholder={`${provider === "deepseek" ? "sk-..." : "sk-..."}`}
+                    <input type="password" className="input text-sm flex-1" placeholder={provider === "deepseek" ? "sk-..." : "sk-proj-..."}
                       value={llmKey} onChange={(e) => setLlmKey(e.target.value)} />
                     <button onClick={saveLlm} disabled={saving || !llmKey.trim()}
                       className="px-4 py-2 rounded-xl font-semibold text-sm bg-violet-500 text-white disabled:opacity-50">Save</button>

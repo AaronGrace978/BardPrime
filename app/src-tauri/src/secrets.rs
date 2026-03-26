@@ -43,6 +43,19 @@ pub fn clear_llm_api_key() -> Result<(), String> {
         .map_err(|e| format!("Failed to clear LLM key: {}", e))
 }
 
+pub fn get_llm_config() -> Option<String> {
+    keyring::Entry::new(SERVICE, "llm_config")
+        .ok()
+        .and_then(|e| e.get_password().ok())
+}
+
+pub fn set_llm_config(config_json: &str) -> Result<(), String> {
+    keyring::Entry::new(SERVICE, "llm_config")
+        .map_err(|e| e.to_string())?
+        .set_password(config_json)
+        .map_err(|e| format!("Failed to store LLM config: {}", e))
+}
+
 pub fn get_music_model() -> Option<String> {
     keyring::Entry::new(SERVICE, "elevenlabs_music_model")
         .ok()

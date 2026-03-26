@@ -31,9 +31,11 @@ interface BardState {
   hasElevenlabsKey: boolean;
   hasLlmKey: boolean;
   musicModel: string;
+  llmProvider: string;
   setHasElevenlabsKey: (v: boolean) => void;
   setHasLlmKey: (v: boolean) => void;
   setMusicModel: (m: string) => void;
+  setLlmProvider: (p: string) => void;
 
   currentSong: Song | null;
   playing: boolean;
@@ -81,10 +83,11 @@ export const useStore = create<BardState>((set) => ({
 
   settingsOpen: false,
   setSettingsOpen: (v) => set({ settingsOpen: v }),
-  hasElevenlabsKey: false, hasLlmKey: false, musicModel: "",
+  hasElevenlabsKey: false, hasLlmKey: false, musicModel: "", llmProvider: "ollama",
   setHasElevenlabsKey: (v) => set({ hasElevenlabsKey: v }),
   setHasLlmKey: (v) => set({ hasLlmKey: v }),
   setMusicModel: (m) => set({ musicModel: m }),
+  setLlmProvider: (p) => set({ llmProvider: p }),
 
   currentSong: null, playing: false, paused: false,
   setCurrentSong: (s) => set({ currentSong: s }),

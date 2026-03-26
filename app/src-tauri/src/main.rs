@@ -364,6 +364,18 @@ async fn has_llm_key() -> Result<bool, String> {
 }
 
 #[tauri::command]
+async fn set_llm_config(config_json: String) -> Result<bool, String> {
+    secrets::set_llm_config(&config_json)?;
+    python_bridge::clear_cache();
+    Ok(true)
+}
+
+#[tauri::command]
+async fn get_llm_config() -> Result<String, String> {
+    Ok(secrets::get_llm_config().unwrap_or_default())
+}
+
+#[tauri::command]
 async fn set_music_model(model: String) -> Result<bool, String> {
     secrets::set_music_model(model.trim())?;
     python_bridge::clear_cache();
@@ -534,6 +546,8 @@ fn main() {
             set_llm_key,
             has_elevenlabs_key,
             has_llm_key,
+            set_llm_config,
+            get_llm_config,
             set_music_model,
             get_music_model,
             // Playback

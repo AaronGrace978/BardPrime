@@ -1,8 +1,12 @@
 """
 SingingEngine — Turns lyrics + music prompt into actual sung audio.
 
-Primary path: ElevenLabs Music API (plan → inject lyrics → detailed render).
-Fallback: ElevenLabs simple music generation with lyrics baked into the prompt.
+Primary path: ElevenLabs Music API (plan → inject lyrics → stream render).
+Fallback: ElevenLabs simple streaming with lyrics baked into the prompt.
+
+API reference:
+  POST /v1/music/plan      — create composition plan (free, no credits)
+  POST /v1/music/stream    — stream audio from prompt OR composition_plan
 """
 
 from __future__ import annotations
@@ -62,20 +66,22 @@ class SingingEngine:
 
         return result
 
-    def _sing_with_plan(
-        self, lyrics: str, music_prompt: str, duration_ms: int
-    ) -> SingResult:
-        """ElevenLabs plan → inject lyrics → detailed render."""
-        base = self.cfg.elevenlabs.base_url
-        headers = {
+    def _headers(self) -> dict:
+        return {
             "xi-api-key": self.cfg.elevenlabs.api_key,
             "Content-Type": "application/json",
         }
 
+    def _sing_with_plan(
+        self, lyrics: str, music_prompt: str, duration_ms: int
+    ) -> SingResult:
+        """ElevenLabs plan → inject lyrics → stream render."""
+        base = self.cfg.elevenlabs.base_url
+
         try:
             plan_resp = requests.post(
                 f"{base}/music/plan",
-                headers=headers,
+                headers=self._headers(),
                 json={
                     "prompt": music_prompt,
                     "model_id": self.cfg.elevenlabs.music_model,
@@ -89,62 +95,46 @@ class SingingEngine:
             return SingResult(error=f"Plan request failed: {exc}", success=False)
 
         try:
-            sections = plan.get("sections", plan.get("composition_plan", {}).get("sections", []))
+            sections = plan.get("sections", [])
             lyric_blocks = [b.strip() for b in lyrics.split("\n\n") if b.strip()]
 
             for i, section in enumerate(sections):
                 if i < len(lyric_blocks):
-                    section["lyrics"] = lyric_blocks[i]
+                    lines = [line for line in lyric_blocks[i].split("\n") if line.strip()]
+                    section["lines"] = lines
 
-            if "composition_plan" in plan:
-                plan["composition_plan"]["sections"] = sections
+            plan["sections"] = sections
         except Exception as exc:
             log.warning("Failed to inject lyrics into plan: %s", exc)
 
         try:
             render_resp = requests.post(
-                f"{base}/music/detailed",
-                headers=headers,
+                f"{base}/music/stream",
+                headers=self._headers(),
                 json={
-                    "composition_plan": plan.get("composition_plan", plan),
+                    "composition_plan": plan,
                     "model_id": self.cfg.elevenlabs.music_model,
                 },
-                timeout=180,
+                timeout=300,
             )
             render_resp.raise_for_status()
 
-            content_type = render_resp.headers.get("content-type", "")
-            if "audio" in content_type or "octet" in content_type:
-                audio_b64 = base64.b64encode(render_resp.content).decode()
-                duration = duration_ms / 1000.0
-                return SingResult(
-                    audio_b64=audio_b64,
-                    duration_sec=duration,
-                    engine=f"{self._engine_prefix}_plan",
-                    success=True,
-                )
-            else:
-                data = render_resp.json()
-                audio_b64 = data.get("audio", data.get("audio_base64", ""))
-                return SingResult(
-                    audio_b64=audio_b64,
-                    duration_sec=duration_ms / 1000.0,
-                    engine=f"{self._engine_prefix}_plan",
-                    success=bool(audio_b64),
-                    error="" if audio_b64 else "No audio in response",
-                )
+            audio_b64 = base64.b64encode(render_resp.content).decode()
+            return SingResult(
+                audio_b64=audio_b64,
+                duration_sec=duration_ms / 1000.0,
+                engine=f"{self._engine_prefix}_plan",
+                success=bool(audio_b64),
+                error="" if audio_b64 else "No audio in response",
+            )
         except Exception as exc:
-            return SingResult(error=f"Detailed render failed: {exc}", success=False)
+            return SingResult(error=f"Stream render failed: {exc}", success=False)
 
     def _sing_simple(
         self, lyrics: str, music_prompt: str, duration_ms: int
     ) -> SingResult:
         """Fallback: single-prompt music generation with lyrics in the prompt."""
         base = self.cfg.elevenlabs.base_url
-        headers = {
-            "xi-api-key": self.cfg.elevenlabs.api_key,
-            "Content-Type": "application/json",
-        }
 
         combined_prompt = (
             f"{music_prompt}\n\nLyrics to sing:\n{lyrics[:1500]}"
@@ -152,24 +142,18 @@ class SingingEngine:
 
         try:
             resp = requests.post(
-                f"{base}/music",
-                headers=headers,
+                f"{base}/music/stream",
+                headers=self._headers(),
                 json={
                     "prompt": combined_prompt,
                     "model_id": self.cfg.elevenlabs.music_model,
-                    "duration_seconds": min(duration_ms / 1000.0, 300),
+                    "music_length_ms": min(duration_ms, 600_000),
                 },
-                timeout=180,
+                timeout=300,
             )
             resp.raise_for_status()
 
-            content_type = resp.headers.get("content-type", "")
-            if "audio" in content_type or "octet" in content_type:
-                audio_b64 = base64.b64encode(resp.content).decode()
-            else:
-                data = resp.json()
-                audio_b64 = data.get("audio", data.get("audio_base64", ""))
-
+            audio_b64 = base64.b64encode(resp.content).decode()
             return SingResult(
                 audio_b64=audio_b64,
                 duration_sec=duration_ms / 1000.0,
@@ -185,33 +169,22 @@ class SingingEngine:
     ) -> SingResult:
         """Instrumental-only generation (no vocals)."""
         base = self.cfg.elevenlabs.base_url
-        headers = {
-            "xi-api-key": self.cfg.elevenlabs.api_key,
-            "Content-Type": "application/json",
-        }
-
-        prompt = f"{music_prompt} (instrumental only, no vocals)"
 
         try:
             resp = requests.post(
-                f"{base}/music",
-                headers=headers,
+                f"{base}/music/stream",
+                headers=self._headers(),
                 json={
-                    "prompt": prompt,
+                    "prompt": music_prompt,
                     "model_id": self.cfg.elevenlabs.music_model,
-                    "duration_seconds": min(duration_ms / 1000.0, 300),
+                    "music_length_ms": min(duration_ms, 600_000),
+                    "force_instrumental": True,
                 },
-                timeout=180,
+                timeout=300,
             )
             resp.raise_for_status()
 
-            content_type = resp.headers.get("content-type", "")
-            if "audio" in content_type or "octet" in content_type:
-                audio_b64 = base64.b64encode(resp.content).decode()
-            else:
-                data = resp.json()
-                audio_b64 = data.get("audio", data.get("audio_base64", ""))
-
+            audio_b64 = base64.b64encode(resp.content).decode()
             return SingResult(
                 audio_b64=audio_b64,
                 duration_sec=duration_ms / 1000.0,

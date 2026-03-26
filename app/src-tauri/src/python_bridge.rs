@@ -197,7 +197,34 @@ fn build_python_command(
     if let Some(key) = crate::secrets::get_llm_api_key() {
         if !key.trim().is_empty() {
             cmd.env("LLM_API_KEY", &key);
-            cmd.env("DEEPSEEK_API_KEY", key);
+            cmd.env("DEEPSEEK_API_KEY", &key);
+        }
+    }
+    if let Some(config_json) = crate::secrets::get_llm_config() {
+        if let Ok(cfg) = serde_json::from_str::<serde_json::Value>(&config_json) {
+            if let Some(p) = cfg["provider"].as_str() {
+                cmd.env("LLM_PROVIDER", p);
+            }
+            if let Some(u) = cfg["base_url"].as_str() {
+                if !u.is_empty() {
+                    cmd.env("LLM_BASE_URL", u);
+                }
+            }
+            if let Some(m) = cfg["model"].as_str() {
+                if !m.is_empty() {
+                    cmd.env("LLM_MODEL", m);
+                }
+            }
+            if let Some(h) = cfg["ollama_host"].as_str() {
+                if !h.is_empty() {
+                    cmd.env("OLLAMA_HOST", h);
+                }
+            }
+            if let Some(m) = cfg["ollama_model"].as_str() {
+                if !m.is_empty() {
+                    cmd.env("OLLAMA_MODEL", m);
+                }
+            }
         }
     }
     if let Some(model) = crate::secrets::get_music_model() {

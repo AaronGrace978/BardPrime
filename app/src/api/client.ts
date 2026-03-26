@@ -48,6 +48,8 @@ export const api = {
   setLlmKey: (apiKey: string) => invoke<boolean>("set_llm_key", { apiKey }),
   hasElevenlabsKey: () => invoke<boolean>("has_elevenlabs_key"),
   hasLlmKey: () => invoke<boolean>("has_llm_key"),
+  setLlmConfig: (configJson: string) => invoke<boolean>("set_llm_config", { configJson }),
+  getLlmConfig: () => invoke<string>("get_llm_config"),
   setMusicModel: (model: string) => invoke<boolean>("set_music_model", { model }),
   getMusicModel: () => invoke<string>("get_music_model"),
 
