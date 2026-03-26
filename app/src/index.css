@@ -1,0 +1,157 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==================== BASE ==================== */
+@layer base {
+  html { @apply antialiased; }
+  body {
+    @apply bg-bard-950 text-white;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+  * { color: inherit; }
+}
+
+/* ==================== SCROLLBAR ==================== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-bard-700 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-bard-600; }
+::selection { background: rgba(212, 168, 67, 0.25); color: #f0d98f; }
+
+/* ==================== MESH BACKGROUND ==================== */
+.bg-mesh {
+  background:
+    linear-gradient(135deg, rgba(90, 63, 158, 0.12) 0%, transparent 50%),
+    linear-gradient(225deg, rgba(212, 168, 67, 0.06) 0%, transparent 50%),
+    linear-gradient(315deg, rgba(123, 95, 196, 0.08) 0%, transparent 50%),
+    #0a0812;
+}
+
+/* ==================== CARDS ==================== */
+@layer components {
+  .card {
+    @apply bg-bard-800/70 rounded-2xl border border-bard-700/40 shadow-lg backdrop-blur-sm;
+  }
+  .card-interactive {
+    @apply card hover:border-bard-600/60 hover:shadow-xl transition-all duration-300 cursor-pointer;
+  }
+  .card-chat {
+    @apply bg-bard-800/50 rounded-2xl border border-bard-700/30 backdrop-blur-md;
+  }
+}
+
+/* ==================== BUTTONS ==================== */
+@layer components {
+  .btn-primary {
+    @apply bg-gradient-to-r from-gold-500 to-gold-400 text-bard-950
+           font-semibold rounded-xl px-6 py-3
+           shadow-lg shadow-gold-500/20 hover:shadow-xl hover:shadow-gold-500/30
+           active:scale-[0.97] transition-all duration-200;
+  }
+  .btn-secondary {
+    @apply bg-bard-700/60 text-bard-200 font-medium rounded-xl px-5 py-2.5
+           border border-bard-600/40 hover:bg-bard-600/60
+           transition-all duration-200;
+  }
+  .btn-ghost {
+    @apply text-bard-300 font-medium rounded-xl px-4 py-2
+           hover:bg-bard-700/40 hover:text-white transition-all duration-200;
+  }
+  .btn-accent {
+    @apply bg-gradient-to-r from-bard-500 to-bard-400 text-white
+           font-semibold rounded-xl px-6 py-3 shadow-lg
+           hover:shadow-xl transition-all duration-200;
+  }
+}
+
+/* ==================== INPUTS ==================== */
+@layer components {
+  .input {
+    @apply w-full px-4 py-3 bg-bard-900/80 rounded-xl
+           border border-bard-700/50 text-white
+           focus:border-gold-500/60 focus:ring-2 focus:ring-gold-500/20
+           transition-all duration-200 outline-none
+           placeholder:text-bard-500;
+  }
+  .textarea {
+    @apply input resize-none;
+  }
+}
+
+/* ==================== CHIPS ==================== */
+@layer components {
+  .chip {
+    @apply px-3 py-1.5 rounded-full text-sm font-medium
+           bg-bard-800/60 text-bard-300 border border-bard-700/40
+           hover:bg-bard-700/60 hover:text-white
+           transition-all duration-200 cursor-pointer;
+  }
+  .chip-active {
+    @apply bg-gold-500/15 text-gold-300 border-gold-500/40;
+  }
+}
+
+/* ==================== GLOW EFFECTS ==================== */
+.glow-gold { box-shadow: 0 0 32px -4px rgba(212, 168, 67, 0.3); }
+.glow-bard { box-shadow: 0 0 32px -4px rgba(123, 95, 196, 0.4); }
+
+/* ==================== STATUS DOTS ==================== */
+.status-dot {
+  @apply w-2 h-2 rounded-full;
+}
+.status-active {
+  @apply bg-emerald-400 animate-pulse;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+}
+.status-warning {
+  @apply bg-amber-400;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+}
+.status-inactive {
+  @apply bg-bard-600;
+}
+
+/* ==================== RANGE SLIDER ==================== */
+input[type="range"] {
+  @apply w-full h-1.5 bg-bard-700 rounded-full appearance-none cursor-pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  @apply appearance-none w-4 h-4 bg-gold-500 rounded-full cursor-pointer;
+  box-shadow: 0 2px 8px rgba(212, 168, 67, 0.4);
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  @apply bg-gold-400;
+}
+input[type="range"]::-moz-range-thumb {
+  @apply w-4 h-4 bg-gold-500 rounded-full border-0 cursor-pointer;
+}
+
+/* ==================== CHECKBOX ==================== */
+input[type="checkbox"] {
+  @apply w-5 h-5 rounded-lg border-2 border-bard-600
+         text-gold-500 cursor-pointer bg-bard-800
+         focus:ring-2 focus:ring-gold-500/20 focus:ring-offset-0;
+}
+
+/* ==================== SHIMMER ==================== */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-text {
+  background: linear-gradient(90deg, #d4a843 0%, #f0d98f 25%, #d4a843 50%, #f0d98f 75%, #d4a843 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 4s linear infinite;
+}
+
+/* ==================== VISUALIZER ==================== */
+.visualizer-gradient {
+  background: linear-gradient(180deg,
+    rgba(90, 63, 158, 0.08) 0%,
+    rgba(212, 168, 67, 0.04) 50%,
+    rgba(123, 95, 196, 0.08) 100%
+  );
+}
