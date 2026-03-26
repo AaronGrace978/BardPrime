@@ -197,7 +197,6 @@ fn build_python_command(
     if let Some(key) = crate::secrets::get_llm_api_key() {
         if !key.trim().is_empty() {
             cmd.env("LLM_API_KEY", &key);
-            cmd.env("DEEPSEEK_API_KEY", &key);
         }
     }
     if let Some(config_json) = crate::secrets::get_llm_config() {
@@ -223,6 +222,11 @@ fn build_python_command(
             if let Some(m) = cfg["ollama_model"].as_str() {
                 if !m.is_empty() {
                     cmd.env("OLLAMA_MODEL", m);
+                }
+            }
+            if let Some(k) = cfg["ollama_api_key"].as_str() {
+                if !k.is_empty() {
+                    cmd.env("OLLAMA_API_KEY", k);
                 }
             }
         }

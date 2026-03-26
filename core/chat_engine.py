@@ -3,6 +3,8 @@ ChatEngine — Conversational interface to BardPrime.
 
 The Bard speaks in character — poetic, warm, musical. It can detect emotions
 from the user's messages and offer to compose songs.
+
+Supported providers: anthropic, openai, ollama, ollama_cloud
 """
 
 from __future__ import annotations
@@ -68,7 +70,6 @@ class ChatEngine:
     def chat(self, user_message: str) -> ChatResponse:
         self.history.append({"role": "user", "content": user_message})
 
-        # Keep history manageable
         if len(self.history) > 20:
             self.history = self.history[-16:]
 
@@ -81,42 +82,100 @@ class ChatEngine:
     def _call_llm(self, user_message: str) -> str:
         cfg = self.cfg.llm
 
-        if cfg.provider == "ollama":
+        if cfg.provider == "anthropic":
+            return self._call_anthropic()
+        if cfg.provider in ("ollama", "ollama_cloud"):
             return self._call_ollama()
+        return self._call_openai_compat()
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {cfg.api_key}",
-        }
+    def _call_openai_compat(self) -> str:
+        """OpenAI and any OpenAI-compatible API."""
+        cfg = self.cfg.llm
+        base = cfg.base_url or "https://api.openai.com/v1"
+        model = cfg.model or "gpt-5.4-mini"
         messages = [{"role": "system", "content": BARD_SYSTEM}] + self.history
-        body = {
-            "model": cfg.model,
-            "messages": messages,
-            "temperature": 0.8,
-            "max_tokens": 512,
-        }
 
         try:
             resp = requests.post(
-                f"{cfg.base_url}/chat/completions",
-                headers=headers,
-                json=body,
+                f"{base}/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {cfg.api_key}",
+                },
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.8,
+                    "max_tokens": 512,
+                },
                 timeout=30,
             )
             resp.raise_for_status()
             return resp.json()["choices"][0]["message"]["content"]
         except Exception as exc:
-            log.error("Chat LLM call failed: %s", exc)
-            return self._fallback_response(user_message)
+            log.error("OpenAI-compat chat failed: %s", exc)
+            return self._fallback_response(self.history[-1]["content"] if self.history else "")
 
-    def _call_ollama(self) -> str:
+    def _call_anthropic(self) -> str:
+        """Anthropic Messages API (Claude)."""
         cfg = self.cfg.llm
-        messages = [{"role": "system", "content": BARD_SYSTEM}] + self.history
+        model = cfg.model or "claude-sonnet-4-6-20260217"
+
+        messages = []
+        for msg in self.history:
+            role = msg["role"]
+            if role == "system":
+                continue
+            if role not in ("user", "assistant"):
+                role = "user"
+            messages.append({"role": role, "content": msg["content"]})
+
         try:
             resp = requests.post(
-                f"{cfg.ollama_host}/api/chat",
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": cfg.api_key,
+                    "anthropic-version": "2023-06-01",
+                },
                 json={
-                    "model": cfg.ollama_model,
+                    "model": model,
+                    "max_tokens": 512,
+                    "system": BARD_SYSTEM,
+                    "messages": messages,
+                    "temperature": 0.8,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["content"][0]["text"]
+        except Exception as exc:
+            log.error("Anthropic chat failed: %s", exc)
+            return self._fallback_response(self.history[-1]["content"] if self.history else "")
+
+    def _call_ollama(self) -> str:
+        """Ollama local or cloud."""
+        cfg = self.cfg.llm
+
+        if cfg.provider == "ollama_cloud":
+            host = "https://ollama.com"
+            headers = {}
+            if cfg.ollama_api_key:
+                headers["Authorization"] = f"Bearer {cfg.ollama_api_key}"
+        else:
+            host = cfg.ollama_host or "http://localhost:11434"
+            headers = {}
+
+        model = cfg.ollama_model or "llama3"
+        messages = [{"role": "system", "content": BARD_SYSTEM}] + self.history
+
+        try:
+            resp = requests.post(
+                f"{host}/api/chat",
+                headers=headers,
+                json={
+                    "model": model,
                     "messages": messages,
                     "stream": False,
                 },
@@ -129,7 +188,6 @@ class ChatEngine:
             return self._fallback_response(self.history[-1]["content"] if self.history else "")
 
     def _parse_response(self, raw: str, user_message: str) -> ChatResponse:
-        # Extract emotion tag
         emotion = EmotionReading()
         emo_match = re.search(
             r"\[EMOTION:\s*valence=([-\d.]+)\s+arousal=([\d.]+)\s+dominance=([\d.]+)\s+primary=(\w+)\]",
@@ -143,7 +201,6 @@ class ChatEngine:
                 primary=emo_match.group(4),
             )
 
-        # Extract sing tag
         should_sing = False
         song_topic = ""
         sing_match = re.search(r"\[SING(?::\s*(.+?))?\]", raw)
@@ -151,14 +208,11 @@ class ChatEngine:
             should_sing = True
             song_topic = sing_match.group(1) or user_message[:100]
 
-        # Clean message (remove tags)
         clean = re.sub(r"\[EMOTION:.*?\]", "", raw)
         clean = re.sub(r"\[SING(?::.*?)?\]", "", clean)
         clean = clean.strip()
 
         if not emotion.primary or emotion.primary == "neutral":
-            detected = EmotionMapper.detect(user_message)
-            emotion.primary = "neutral"
             for emo_name, keywords in EmotionMapper.KEYWORDS.items():
                 if any(kw in user_message.lower() for kw in keywords):
                     emotion.primary = emo_name

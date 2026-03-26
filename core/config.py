@@ -9,9 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
-
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 _ROOT = Path(__file__).resolve().parent.parent
 
@@ -32,12 +34,13 @@ class ElevenLabsConfig:
 
 @dataclass
 class LLMConfig:
-    provider: str = os.getenv("LLM_PROVIDER", "deepseek")  # deepseek | ollama | openai
-    api_key: str = os.getenv("LLM_API_KEY", os.getenv("DEEPSEEK_API_KEY", ""))
-    base_url: str = os.getenv("LLM_BASE_URL", os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"))
-    model: str = os.getenv("LLM_MODEL", os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
+    provider: str = os.getenv("LLM_PROVIDER", "ollama")  # anthropic | openai | ollama | ollama_cloud
+    api_key: str = os.getenv("LLM_API_KEY", "")
+    base_url: str = os.getenv("LLM_BASE_URL", "")
+    model: str = os.getenv("LLM_MODEL", "")
     ollama_host: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     ollama_model: str = os.getenv("OLLAMA_MODEL", "llama3")
+    ollama_api_key: str = os.getenv("OLLAMA_API_KEY", "")
     temperature: float = 0.85
     max_tokens: int = 2048
 

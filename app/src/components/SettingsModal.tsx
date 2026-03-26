@@ -1,16 +1,71 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Key, Brain, Music, CheckCircle, AlertCircle, Server, Globe, Cpu, Zap } from "lucide-react";
+import { X, Brain, Music, CheckCircle, AlertCircle, Server, Globe, Cpu, Zap, Cloud, ChevronDown } from "lucide-react";
 import { useStore } from "../store";
 import { api } from "../api/client";
 
-type LLMProvider = "deepseek" | "openai" | "ollama";
+type LLMProvider = "anthropic" | "openai" | "ollama" | "ollama_cloud";
 
 const PROVIDERS: { id: LLMProvider; label: string; icon: typeof Brain; desc: string; color: string }[] = [
-  { id: "deepseek", label: "DeepSeek", icon: Brain, desc: "Fast, affordable API", color: "from-blue-500 to-cyan-500" },
-  { id: "openai", label: "OpenAI", icon: Globe, desc: "GPT-4o / GPT-4", color: "from-emerald-500 to-green-500" },
+  { id: "anthropic", label: "Anthropic", icon: Brain, desc: "Claude Sonnet 4.6 / Opus", color: "from-orange-500 to-amber-600" },
+  { id: "openai", label: "OpenAI", icon: Globe, desc: "GPT-5.4 / GPT-4.1", color: "from-emerald-500 to-green-500" },
   { id: "ollama", label: "Ollama", icon: Server, desc: "Local, free, private", color: "from-purple-500 to-violet-500" },
+  { id: "ollama_cloud", label: "Ollama Cloud", icon: Cloud, desc: "Qwen, Devstral, GLM...", color: "from-sky-500 to-blue-500" },
 ];
+
+const MODEL_OPTIONS: Record<string, { id: string; label: string }[]> = {
+  anthropic: [
+    { id: "claude-sonnet-4-6-20260217", label: "Claude Sonnet 4.6 (latest)" },
+    { id: "claude-opus-4-6-20260217", label: "Claude Opus 4.6" },
+    { id: "claude-sonnet-4-5-20250918", label: "Claude Sonnet 4.5" },
+    { id: "claude-haiku-4-5-20250918", label: "Claude Haiku 4.5 (fast)" },
+  ],
+  openai: [
+    { id: "gpt-5.4", label: "GPT-5.4 (latest)" },
+    { id: "gpt-5.4-mini", label: "GPT-5.4 Mini" },
+    { id: "gpt-5", label: "GPT-5" },
+    { id: "gpt-4.1", label: "GPT-4.1" },
+    { id: "gpt-4.1-mini", label: "GPT-4.1 Mini" },
+    { id: "gpt-4.1-nano", label: "GPT-4.1 Nano (cheapest)" },
+  ],
+  ollama_cloud: [
+    { id: "qwen3.5:122b", label: "Qwen 3.5 122B" },
+    { id: "minimax-m2.7", label: "MiniMax M2.7" },
+    { id: "qwen3-coder-next", label: "Qwen3 Coder Next" },
+    { id: "nemotron-3-super:120b", label: "Nemotron 3 Super 120B" },
+    { id: "kimi-k2.5", label: "Kimi K2.5" },
+    { id: "glm-5", label: "GLM-5 744B" },
+    { id: "devstral-small-2:24b", label: "Devstral Small 2 24B" },
+    { id: "qwen3-next:80b", label: "Qwen3 Next 80B" },
+    { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview" },
+    { id: "deepseek-v3.2", label: "DeepSeek V3.2" },
+    { id: "devstral-2:123b", label: "Devstral 2 123B" },
+    { id: "minimax-m2.5", label: "MiniMax M2.5" },
+  ],
+};
+
+function ModelSelect({ provider, value, onChange }: { provider: LLMProvider; value: string; onChange: (v: string) => void }) {
+  const options = MODEL_OPTIONS[provider];
+  if (!options) return null;
+
+  return (
+    <div>
+      <label className="block text-xs text-bard-400 mb-1">Model</label>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="input text-sm w-full appearance-none pr-8 bg-bard-800/60 border-bard-700/50 text-white cursor-pointer"
+        >
+          {options.map((m) => (
+            <option key={m.id} value={m.id}>{m.label}</option>
+          ))}
+        </select>
+        <ChevronDown className="w-3.5 h-3.5 text-bard-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+      </div>
+    </div>
+  );
+}
 
 export function SettingsModal() {
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
@@ -27,10 +82,20 @@ export function SettingsModal() {
   const [llmKey, setLlmKey] = useState("");
   const [finetuneId, setFinetuneId] = useState(musicModel);
   const [provider, setProvider] = useState<LLMProvider>((storedProvider || "ollama") as LLMProvider);
+  const [selectedModel, setSelectedModel] = useState(() => {
+    const opts = MODEL_OPTIONS[storedProvider];
+    return opts?.[0]?.id || "";
+  });
   const [ollamaHost, setOllamaHost] = useState("http://localhost:11434");
-  const [ollamaModel, setOllamaModel] = useState("llama3");
+  const [ollamaLocalModel, setOllamaLocalModel] = useState("llama3");
   const [saving, setSaving] = useState(false);
   const [llmSaved, setLlmSaved] = useState(false);
+
+  const handleProviderChange = (p: LLMProvider) => {
+    setProvider(p);
+    const opts = MODEL_OPTIONS[p];
+    if (opts) setSelectedModel(opts[0].id);
+  };
 
   const saveEl = async () => {
     if (!elKey.trim()) return;
@@ -51,35 +116,34 @@ export function SettingsModal() {
   const saveLlm = async () => {
     setSaving(true);
     try {
-      const baseUrls: Record<LLMProvider, string> = {
-        deepseek: "https://api.deepseek.com/v1",
-        openai: "https://api.openai.com/v1",
-        ollama: "",
-      };
-      const defaultModels: Record<LLMProvider, string> = {
-        deepseek: "deepseek-chat",
-        openai: "gpt-4o",
-        ollama: "",
-      };
       const config = JSON.stringify({
         provider,
-        base_url: baseUrls[provider],
-        model: defaultModels[provider],
-        ollama_host: ollamaHost,
-        ollama_model: ollamaModel,
+        base_url: provider === "openai" ? "https://api.openai.com/v1" : "",
+        model: provider === "anthropic" || provider === "openai" ? selectedModel : "",
+        ollama_host: provider === "ollama" ? ollamaHost : "",
+        ollama_model: provider === "ollama" ? ollamaLocalModel : provider === "ollama_cloud" ? selectedModel : "",
+        ollama_api_key: provider === "ollama_cloud" && llmKey.trim() ? llmKey.trim() : "",
       });
       await api.setLlmConfig(config);
       setLlmProvider(provider);
 
-      if (provider !== "ollama" && llmKey.trim()) {
+      if ((provider === "anthropic" || provider === "openai") && llmKey.trim()) {
         await api.setLlmKey(llmKey);
-        setLlmKey("");
       }
+      setLlmKey("");
       setHasLlmKey(true);
       setLlmSaved(true);
       setTimeout(() => setLlmSaved(false), 2000);
     } catch {}
     setSaving(false);
+  };
+
+  const needsApiKey = provider === "anthropic" || provider === "openai" || provider === "ollama_cloud";
+
+  const keyPlaceholders: Record<string, string> = {
+    anthropic: "sk-ant-...",
+    openai: "sk-proj-...",
+    ollama_cloud: "Ollama API key from ollama.com/settings/keys",
   };
 
   return (
@@ -89,7 +153,7 @@ export function SettingsModal() {
       <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }}
         className="w-full max-w-lg bg-bard-900 rounded-2xl border border-bard-700/50 shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}>
-        
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-bard-700/30">
           <div className="flex items-center gap-3">
@@ -111,9 +175,9 @@ export function SettingsModal() {
             </h3>
             <p className="text-xs text-bard-500">Choose how BardPrime thinks and writes lyrics</p>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {PROVIDERS.map((p) => (
-                <button key={p.id} onClick={() => setProvider(p.id)}
+                <button key={p.id} onClick={() => handleProviderChange(p.id)}
                   className={`p-3 rounded-xl border text-left transition-all ${
                     provider === p.id
                       ? "bg-bard-800/80 border-violet-500/50 shadow-lg"
@@ -128,10 +192,10 @@ export function SettingsModal() {
               ))}
             </div>
 
-            {/* Provider-specific config */}
+            {/* Provider config */}
             <AnimatePresence mode="wait">
               {provider === "ollama" ? (
-                <motion.div key="ollama" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                <motion.div key="ollama-local" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   className="space-y-3 p-4 bg-bard-800/40 rounded-xl border border-bard-700/30">
                   <div>
                     <label className="block text-xs text-bard-400 mb-1">Ollama Host</label>
@@ -139,36 +203,48 @@ export function SettingsModal() {
                   </div>
                   <div>
                     <label className="block text-xs text-bard-400 mb-1">Model</label>
-                    <input className="input text-sm" value={ollamaModel} onChange={(e) => setOllamaModel(e.target.value)} placeholder="llama3, mistral, deepseek-r1..." />
+                    <input className="input text-sm" value={ollamaLocalModel} onChange={(e) => setOllamaLocalModel(e.target.value)} placeholder="llama3, mistral, deepseek-r1..." />
                   </div>
                   <div className="flex items-center gap-2 text-xs text-bard-500">
                     <Server className="w-3.5 h-3.5" />
-                    Make sure Ollama is running locally. No API key needed.
+                    Runs 100% locally. No API key needed.
                   </div>
                   {llmSaved && <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Config saved!</div>}
                   <button onClick={saveLlm} disabled={saving}
                     className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg disabled:opacity-50">
-                    Save Ollama Config
+                    Save Config
                   </button>
                 </motion.div>
               ) : (
-                <motion.div key="api" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                <motion.div key={provider} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   className="space-y-3 p-4 bg-bard-800/40 rounded-xl border border-bard-700/30">
+                  <ModelSelect provider={provider} value={selectedModel} onChange={setSelectedModel} />
                   <div className="flex items-center gap-2">
                     {llmSaved ? (
                       <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Config saved!</div>
                     ) : hasLlmKey && storedProvider === provider ? (
-                      <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Key saved</div>
+                      <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Configured</div>
                     ) : (
-                      <div className="flex items-center gap-1.5 text-amber-400 text-xs"><AlertCircle className="w-3.5 h-3.5" /> Enter API key for {provider === "deepseek" ? "DeepSeek" : "OpenAI"}</div>
+                      <div className="flex items-center gap-1.5 text-amber-400 text-xs"><AlertCircle className="w-3.5 h-3.5" /> API key required</div>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <input type="password" className="input text-sm flex-1" placeholder={provider === "deepseek" ? "sk-..." : "sk-proj-..."}
-                      value={llmKey} onChange={(e) => setLlmKey(e.target.value)} />
-                    <button onClick={saveLlm} disabled={saving || !llmKey.trim()}
-                      className="px-4 py-2 rounded-xl font-semibold text-sm bg-violet-500 text-white disabled:opacity-50">Save</button>
-                  </div>
+                  {needsApiKey && (
+                    <div>
+                      <label className="block text-xs text-bard-400 mb-1">API Key</label>
+                      <input type="password" className="input text-sm w-full" placeholder={keyPlaceholders[provider] || "API key..."}
+                        value={llmKey} onChange={(e) => setLlmKey(e.target.value)} />
+                    </div>
+                  )}
+                  {provider === "ollama_cloud" && (
+                    <div className="flex items-center gap-2 text-xs text-bard-500">
+                      <Cloud className="w-3.5 h-3.5" />
+                      Get your key at ollama.com/settings/keys. Run `ollama signin` first.
+                    </div>
+                  )}
+                  <button onClick={saveLlm} disabled={saving || (needsApiKey && !llmKey.trim() && !(hasLlmKey && storedProvider === provider))}
+                    className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg disabled:opacity-50">
+                    Save Config
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -236,7 +312,8 @@ export function SettingsModal() {
           {/* Info */}
           <div className="p-4 bg-bard-800/30 rounded-xl border border-bard-700/20 text-xs text-bard-500 space-y-1">
             <p>API keys are stored securely in your OS keychain (Windows Credential Manager / macOS Keychain).</p>
-            <p>Ollama runs 100% locally — your data never leaves your machine.</p>
+            <p>Ollama Local runs 100% on your machine — your data never leaves.</p>
+            <p>Ollama Cloud runs on ollama.com servers. Sign in with `ollama signin`.</p>
           </div>
         </div>
       </motion.div>

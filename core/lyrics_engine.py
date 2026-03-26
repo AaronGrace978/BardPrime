@@ -3,6 +3,8 @@ LyricsEngine — The heart of BardPrime.
 
 Generates deeply personalized song lyrics using an LLM, informed by the user's
 life journal, emotional state, chosen genre, and topic.
+
+Supported providers: anthropic, openai, ollama, ollama_cloud
 """
 
 from __future__ import annotations
@@ -124,44 +126,92 @@ class LyricsEngine:
     def _call_llm(self, system: str, user: str) -> str:
         cfg = self.cfg.llm
 
-        if cfg.provider == "ollama":
+        if cfg.provider == "anthropic":
+            return self._call_anthropic(system, user)
+        if cfg.provider in ("ollama", "ollama_cloud"):
             return self._call_ollama(system, user)
+        return self._call_openai_compat(system, user)
 
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {cfg.api_key}",
-        }
-        body = {
-            "model": cfg.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": cfg.temperature,
-            "max_tokens": cfg.max_tokens,
-        }
+    def _call_openai_compat(self, system: str, user: str) -> str:
+        """OpenAI and any OpenAI-compatible API."""
+        cfg = self.cfg.llm
+        base = cfg.base_url or "https://api.openai.com/v1"
+        model = cfg.model or "gpt-5.4-mini"
 
         try:
             resp = requests.post(
-                f"{cfg.base_url}/chat/completions",
-                headers=headers,
-                json=body,
+                f"{base}/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {cfg.api_key}",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    "temperature": cfg.temperature,
+                    "max_tokens": cfg.max_tokens,
+                },
+                timeout=60,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as exc:
+            log.error("OpenAI-compat LLM call failed: %s", exc)
+            return self._fallback_lyrics()
+
+    def _call_anthropic(self, system: str, user: str) -> str:
+        """Anthropic Messages API (Claude)."""
+        cfg = self.cfg.llm
+        model = cfg.model or "claude-sonnet-4-6-20260217"
+
+        try:
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": cfg.api_key,
+                    "anthropic-version": "2023-06-01",
+                },
+                json={
+                    "model": model,
+                    "max_tokens": cfg.max_tokens,
+                    "system": system,
+                    "messages": [{"role": "user", "content": user}],
+                    "temperature": cfg.temperature,
+                },
                 timeout=60,
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            return data["content"][0]["text"]
         except Exception as exc:
-            log.error("LLM call failed: %s", exc)
+            log.error("Anthropic call failed: %s", exc)
             return self._fallback_lyrics()
 
     def _call_ollama(self, system: str, user: str) -> str:
+        """Ollama local or cloud. Cloud uses https://ollama.com with Bearer auth."""
         cfg = self.cfg.llm
+
+        if cfg.provider == "ollama_cloud":
+            host = "https://ollama.com"
+            headers = {}
+            if cfg.ollama_api_key:
+                headers["Authorization"] = f"Bearer {cfg.ollama_api_key}"
+        else:
+            host = cfg.ollama_host or "http://localhost:11434"
+            headers = {}
+
+        model = cfg.ollama_model or "llama3"
+
         try:
             resp = requests.post(
-                f"{cfg.ollama_host}/api/chat",
+                f"{host}/api/chat",
+                headers=headers,
                 json={
-                    "model": cfg.ollama_model,
+                    "model": model,
                     "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},

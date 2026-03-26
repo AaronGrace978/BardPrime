@@ -99,7 +99,7 @@ export default function App() {
             }`}>
               <div className={`status-dot ${hasLlmKey ? "status-active" : "status-inactive"}`} />
               <Brain className="w-3 h-3" />
-              <span>{({deepseek: "DeepSeek", openai: "OpenAI", ollama: "Ollama"} as Record<string, string>)[llmProvider] || "LLM"}</span>
+              <span>{({anthropic: "Claude", openai: "OpenAI", ollama: "Ollama", ollama_cloud: "Ollama Cloud"} as Record<string, string>)[llmProvider] || "LLM"}</span>
             </div>
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${
               hasElevenlabsKey ? "bg-amber-500/10 border-amber-500/30 text-amber-400" : "bg-bard-800 border-bard-700/50 text-bard-500"
