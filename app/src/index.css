@@ -2,7 +2,345 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ==================== BASE ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   THEME SYSTEM — Each theme transforms the entire visual feel:
+   mesh texture, card glass, glow color, shadow depth, shimmer,
+   border treatment, focus rings, scrollbar, and selection.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── BARD — Royal purple & burnished gold. Mystical, scholarly. ── */
+:root, [data-theme="bard"] {
+  --c-base-950: 10 8 18;
+  --c-base-900: 17 14 29;
+  --c-base-850: 24 19 42;
+  --c-base-800: 31 24 54;
+  --c-base-700: 45 33 80;
+  --c-base-600: 61 45 107;
+  --c-base-500: 90 63 158;
+  --c-base-400: 123 95 196;
+  --c-base-300: 157 131 217;
+  --c-base-200: 196 177 235;
+  --c-base-100: 230 221 247;
+  --c-accent-500: 212 168 67;
+  --c-accent-400: 229 195 106;
+  --c-accent-300: 240 217 143;
+  --c-accent-200: 247 235 192;
+  --c-ember-500: 199 92 46;
+  --c-ember-400: 232 121 63;
+  --c-selection: rgba(212, 168, 67, 0.25);
+  --c-selection-text: #f0d98f;
+  --c-shimmer-1: #d4a843;
+  --c-shimmer-2: #f0d98f;
+  --c-shimmer-speed: 4s;
+  --c-card-blur: 6px;
+  --c-card-border: rgb(45 33 80 / 0.4);
+  --c-card-bg: rgb(31 24 54 / 0.7);
+  --c-glow-spread: 32px;
+  --c-glow-accent: rgb(212 168 67 / 0.3);
+  --c-glow-base: rgb(123 95 196 / 0.4);
+  --c-shadow-color: 10 8 18;
+  --c-mesh: linear-gradient(135deg, rgba(90,63,158,0.12) 0%, transparent 50%),
+            linear-gradient(225deg, rgba(212,168,67,0.06) 0%, transparent 50%),
+            linear-gradient(315deg, rgba(123,95,196,0.08) 0%, transparent 50%);
+  --c-vis: linear-gradient(180deg, rgba(90,63,158,0.08) 0%, rgba(212,168,67,0.04) 50%, rgba(123,95,196,0.08) 100%);
+  --c-focus-ring: rgb(212 168 67 / 0.2);
+  --c-focus-border: rgb(212 168 67 / 0.6);
+  --c-border-radius: 1rem;
+  --c-card-radius: 1rem;
+}
+
+/* ── OBSIDIAN — True void black, electric neon cyan. Futuristic, sharp. ── */
+[data-theme="obsidian"] {
+  --c-base-950: 2 2 4;
+  --c-base-900: 6 6 10;
+  --c-base-850: 10 10 16;
+  --c-base-800: 14 14 22;
+  --c-base-700: 22 22 34;
+  --c-base-600: 32 32 48;
+  --c-base-500: 48 48 70;
+  --c-base-400: 72 72 100;
+  --c-base-300: 110 110 140;
+  --c-base-200: 165 165 190;
+  --c-base-100: 220 220 235;
+  --c-accent-500: 0 230 220;
+  --c-accent-400: 50 245 240;
+  --c-accent-300: 120 252 248;
+  --c-accent-200: 190 255 252;
+  --c-ember-500: 0 180 255;
+  --c-ember-400: 60 200 255;
+  --c-selection: rgba(0, 230, 220, 0.2);
+  --c-selection-text: #78fcf8;
+  --c-shimmer-1: #00e6dc;
+  --c-shimmer-2: #78fcf8;
+  --c-shimmer-speed: 2.5s;
+  --c-card-blur: 12px;
+  --c-card-border: rgb(0 230 220 / 0.08);
+  --c-card-bg: rgb(6 6 10 / 0.85);
+  --c-glow-spread: 40px;
+  --c-glow-accent: rgb(0 230 220 / 0.25);
+  --c-glow-base: rgb(0 180 255 / 0.2);
+  --c-shadow-color: 0 0 0;
+  --c-mesh: radial-gradient(ellipse at 20% 0%, rgba(0,230,220,0.07) 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 100%, rgba(0,180,255,0.05) 0%, transparent 50%),
+            linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,230,220,0.02) 100%);
+  --c-vis: linear-gradient(180deg, rgba(0,230,220,0.06) 0%, rgba(0,0,0,0) 40%, rgba(0,180,255,0.04) 100%);
+  --c-focus-ring: rgb(0 230 220 / 0.15);
+  --c-focus-border: rgb(0 230 220 / 0.5);
+  --c-border-radius: 0.75rem;
+  --c-card-radius: 0.75rem;
+}
+
+/* ── VELVET — Deep crimson wine, rose gold. Luxurious jazz lounge. ── */
+[data-theme="velvet"] {
+  --c-base-950: 16 6 10;
+  --c-base-900: 26 10 16;
+  --c-base-850: 36 14 22;
+  --c-base-800: 48 18 30;
+  --c-base-700: 68 24 42;
+  --c-base-600: 92 32 55;
+  --c-base-500: 128 42 72;
+  --c-base-400: 165 60 95;
+  --c-base-300: 195 95 130;
+  --c-base-200: 220 145 170;
+  --c-base-100: 242 210 222;
+  --c-accent-500: 224 180 160;
+  --c-accent-400: 238 200 180;
+  --c-accent-300: 246 220 205;
+  --c-accent-200: 252 240 232;
+  --c-ember-500: 200 60 80;
+  --c-ember-400: 225 85 100;
+  --c-selection: rgba(224, 180, 160, 0.25);
+  --c-selection-text: #f6dccd;
+  --c-shimmer-1: #e0b4a0;
+  --c-shimmer-2: #f6dccd;
+  --c-shimmer-speed: 5s;
+  --c-card-blur: 10px;
+  --c-card-border: rgb(92 32 55 / 0.5);
+  --c-card-bg: rgb(36 14 22 / 0.75);
+  --c-glow-spread: 36px;
+  --c-glow-accent: rgb(224 180 160 / 0.25);
+  --c-glow-base: rgb(165 60 95 / 0.3);
+  --c-shadow-color: 16 4 8;
+  --c-mesh: linear-gradient(160deg, rgba(128,42,72,0.15) 0%, transparent 40%),
+            radial-gradient(ellipse at 70% 80%, rgba(224,180,160,0.08) 0%, transparent 50%),
+            linear-gradient(340deg, rgba(92,32,55,0.1) 0%, transparent 60%);
+  --c-vis: linear-gradient(180deg, rgba(165,60,95,0.1) 0%, rgba(224,180,160,0.04) 50%, rgba(128,42,72,0.08) 100%);
+  --c-focus-ring: rgb(224 180 160 / 0.2);
+  --c-focus-border: rgb(224 180 160 / 0.5);
+  --c-border-radius: 1.25rem;
+  --c-card-radius: 1.25rem;
+}
+
+/* ── AURORA — Deep teal void, prismatic pink/cyan/green light. Ethereal. ── */
+[data-theme="aurora"] {
+  --c-base-950: 4 10 14;
+  --c-base-900: 8 16 22;
+  --c-base-850: 12 22 30;
+  --c-base-800: 16 30 40;
+  --c-base-700: 22 44 58;
+  --c-base-600: 30 60 78;
+  --c-base-500: 40 82 105;
+  --c-base-400: 60 115 145;
+  --c-base-300: 95 155 180;
+  --c-base-200: 150 200 215;
+  --c-base-100: 215 238 242;
+  --c-accent-500: 220 100 220;
+  --c-accent-400: 240 140 240;
+  --c-accent-300: 248 180 248;
+  --c-accent-200: 252 220 252;
+  --c-ember-500: 80 220 180;
+  --c-ember-400: 120 240 200;
+  --c-selection: rgba(220, 100, 220, 0.2);
+  --c-selection-text: #f8b4f8;
+  --c-shimmer-1: #50dcb4;
+  --c-shimmer-2: #dc64dc;
+  --c-shimmer-speed: 3s;
+  --c-card-blur: 14px;
+  --c-card-border: rgb(60 115 145 / 0.3);
+  --c-card-bg: rgb(12 22 30 / 0.7);
+  --c-glow-spread: 44px;
+  --c-glow-accent: rgb(220 100 220 / 0.2);
+  --c-glow-base: rgb(80 220 180 / 0.15);
+  --c-shadow-color: 2 8 12;
+  --c-mesh: radial-gradient(ellipse at 15% 10%, rgba(80,220,180,0.1) 0%, transparent 40%),
+            radial-gradient(ellipse at 85% 20%, rgba(220,100,220,0.08) 0%, transparent 35%),
+            radial-gradient(ellipse at 50% 90%, rgba(60,180,255,0.06) 0%, transparent 45%),
+            linear-gradient(180deg, rgba(80,220,180,0.03) 0%, transparent 30%);
+  --c-vis: linear-gradient(180deg, rgba(80,220,180,0.08) 0%, rgba(220,100,220,0.04) 50%, rgba(60,180,255,0.06) 100%);
+  --c-focus-ring: rgb(80 220 180 / 0.2);
+  --c-focus-border: rgb(80 220 180 / 0.5);
+  --c-border-radius: 1rem;
+  --c-card-radius: 1rem;
+}
+
+/* ── FORGE — Iron gunmetal, molten amber/orange. Industrial, powerful. ── */
+[data-theme="forge"] {
+  --c-base-950: 12 10 8;
+  --c-base-900: 20 17 14;
+  --c-base-850: 28 24 20;
+  --c-base-800: 38 33 28;
+  --c-base-700: 55 48 40;
+  --c-base-600: 75 65 55;
+  --c-base-500: 100 88 74;
+  --c-base-400: 135 120 102;
+  --c-base-300: 170 155 138;
+  --c-base-200: 205 192 178;
+  --c-base-100: 235 228 220;
+  --c-accent-500: 245 158 40;
+  --c-accent-400: 252 185 75;
+  --c-accent-300: 254 210 120;
+  --c-accent-200: 255 235 180;
+  --c-ember-500: 230 80 20;
+  --c-ember-400: 248 110 45;
+  --c-selection: rgba(245, 158, 40, 0.25);
+  --c-selection-text: #fed478;
+  --c-shimmer-1: #f59e28;
+  --c-shimmer-2: #fed478;
+  --c-shimmer-speed: 3.5s;
+  --c-card-blur: 4px;
+  --c-card-border: rgb(75 65 55 / 0.6);
+  --c-card-bg: rgb(28 24 20 / 0.8);
+  --c-glow-spread: 28px;
+  --c-glow-accent: rgb(245 158 40 / 0.35);
+  --c-glow-base: rgb(230 80 20 / 0.2);
+  --c-shadow-color: 8 6 4;
+  --c-mesh: linear-gradient(180deg, rgba(245,158,40,0.04) 0%, transparent 30%),
+            radial-gradient(ellipse at 30% 100%, rgba(230,80,20,0.08) 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 80%, rgba(245,158,40,0.05) 0%, transparent 40%);
+  --c-vis: linear-gradient(180deg, rgba(230,80,20,0.06) 0%, rgba(245,158,40,0.08) 60%, rgba(100,88,74,0.04) 100%);
+  --c-focus-ring: rgb(245 158 40 / 0.2);
+  --c-focus-border: rgb(245 158 40 / 0.6);
+  --c-border-radius: 0.625rem;
+  --c-card-radius: 0.625rem;
+}
+
+/* ── SAKURA — Deep plum, cherry blossom pink + champagne. Elegant. ── */
+[data-theme="sakura"] {
+  --c-base-950: 14 8 16;
+  --c-base-900: 22 14 26;
+  --c-base-850: 32 20 38;
+  --c-base-800: 42 28 50;
+  --c-base-700: 60 40 70;
+  --c-base-600: 80 54 92;
+  --c-base-500: 108 72 122;
+  --c-base-400: 145 100 158;
+  --c-base-300: 178 138 190;
+  --c-base-200: 210 180 218;
+  --c-base-100: 238 225 242;
+  --c-accent-500: 240 150 170;
+  --c-accent-400: 248 178 195;
+  --c-accent-300: 252 205 215;
+  --c-accent-200: 254 232 236;
+  --c-ember-500: 220 120 140;
+  --c-ember-400: 238 150 165;
+  --c-selection: rgba(240, 150, 170, 0.25);
+  --c-selection-text: #fccddb;
+  --c-shimmer-1: #f096aa;
+  --c-shimmer-2: #fccddb;
+  --c-shimmer-speed: 5.5s;
+  --c-card-blur: 16px;
+  --c-card-border: rgb(80 54 92 / 0.35);
+  --c-card-bg: rgb(32 20 38 / 0.6);
+  --c-glow-spread: 38px;
+  --c-glow-accent: rgb(240 150 170 / 0.2);
+  --c-glow-base: rgb(145 100 158 / 0.25);
+  --c-shadow-color: 12 6 14;
+  --c-mesh: radial-gradient(ellipse at 25% 15%, rgba(240,150,170,0.08) 0%, transparent 40%),
+            radial-gradient(ellipse at 75% 85%, rgba(145,100,158,0.06) 0%, transparent 40%),
+            linear-gradient(200deg, rgba(220,120,140,0.04) 0%, transparent 50%),
+            radial-gradient(ellipse at 50% 50%, rgba(240,150,170,0.03) 0%, transparent 60%);
+  --c-vis: linear-gradient(180deg, rgba(240,150,170,0.06) 0%, rgba(145,100,158,0.03) 50%, rgba(220,120,140,0.05) 100%);
+  --c-focus-ring: rgb(240 150 170 / 0.2);
+  --c-focus-border: rgb(240 150 170 / 0.5);
+  --c-border-radius: 1.5rem;
+  --c-card-radius: 1.5rem;
+}
+
+/* ── OCEAN — Abyssal deep navy, bioluminescent aquamarine. Deep sea. ── */
+[data-theme="ocean"] {
+  --c-base-950: 4 8 16;
+  --c-base-900: 8 14 28;
+  --c-base-850: 12 20 38;
+  --c-base-800: 16 28 50;
+  --c-base-700: 20 40 72;
+  --c-base-600: 28 56 98;
+  --c-base-500: 36 78 130;
+  --c-base-400: 52 110 168;
+  --c-base-300: 80 150 200;
+  --c-base-200: 130 192 225;
+  --c-base-100: 200 230 245;
+  --c-accent-500: 60 225 195;
+  --c-accent-400: 100 240 215;
+  --c-accent-300: 150 248 230;
+  --c-accent-200: 200 252 242;
+  --c-ember-500: 40 160 200;
+  --c-ember-400: 70 190 225;
+  --c-selection: rgba(60, 225, 195, 0.2);
+  --c-selection-text: #96f8e6;
+  --c-shimmer-1: #3ce1c3;
+  --c-shimmer-2: #96f8e6;
+  --c-shimmer-speed: 6s;
+  --c-card-blur: 12px;
+  --c-card-border: rgb(28 56 98 / 0.5);
+  --c-card-bg: rgb(12 20 38 / 0.7);
+  --c-glow-spread: 36px;
+  --c-glow-accent: rgb(60 225 195 / 0.2);
+  --c-glow-base: rgb(40 160 200 / 0.2);
+  --c-shadow-color: 2 4 12;
+  --c-mesh: radial-gradient(ellipse at 50% 120%, rgba(60,225,195,0.06) 0%, transparent 50%),
+            radial-gradient(ellipse at 20% 40%, rgba(40,160,200,0.05) 0%, transparent 40%),
+            radial-gradient(ellipse at 80% 20%, rgba(60,225,195,0.03) 0%, transparent 35%),
+            linear-gradient(180deg, rgba(4,8,16,0) 0%, rgba(40,160,200,0.04) 100%);
+  --c-vis: linear-gradient(180deg, rgba(40,160,200,0.08) 0%, rgba(60,225,195,0.04) 50%, rgba(36,78,130,0.06) 100%);
+  --c-focus-ring: rgb(60 225 195 / 0.2);
+  --c-focus-border: rgb(60 225 195 / 0.5);
+  --c-border-radius: 1rem;
+  --c-card-radius: 1rem;
+}
+
+/* ── NOIR — Pitch black, stark white, blood-red accent. Cinematic. ── */
+[data-theme="noir"] {
+  --c-base-950: 4 4 4;
+  --c-base-900: 10 10 10;
+  --c-base-850: 16 16 16;
+  --c-base-800: 22 22 22;
+  --c-base-700: 34 34 34;
+  --c-base-600: 50 50 50;
+  --c-base-500: 72 72 72;
+  --c-base-400: 105 105 105;
+  --c-base-300: 148 148 148;
+  --c-base-200: 195 195 195;
+  --c-base-100: 235 235 235;
+  --c-accent-500: 235 235 235;
+  --c-accent-400: 245 245 245;
+  --c-accent-300: 250 250 250;
+  --c-accent-200: 255 255 255;
+  --c-ember-500: 200 30 40;
+  --c-ember-400: 225 55 65;
+  --c-selection: rgba(200, 30, 40, 0.3);
+  --c-selection-text: #ff8888;
+  --c-shimmer-1: #ebebeb;
+  --c-shimmer-2: #ffffff;
+  --c-shimmer-speed: 3s;
+  --c-card-blur: 2px;
+  --c-card-border: rgb(50 50 50 / 0.8);
+  --c-card-bg: rgb(10 10 10 / 0.9);
+  --c-glow-spread: 20px;
+  --c-glow-accent: rgb(235 235 235 / 0.08);
+  --c-glow-base: rgb(200 30 40 / 0.15);
+  --c-shadow-color: 0 0 0;
+  --c-mesh: linear-gradient(180deg, rgba(255,255,255,0.015) 0%, transparent 40%),
+            radial-gradient(ellipse at 50% 50%, rgba(200,30,40,0.03) 0%, transparent 60%);
+  --c-vis: linear-gradient(180deg, rgba(200,30,40,0.04) 0%, rgba(0,0,0,0) 40%, rgba(235,235,235,0.02) 100%);
+  --c-focus-ring: rgb(200 30 40 / 0.2);
+  --c-focus-border: rgb(200 30 40 / 0.6);
+  --c-border-radius: 0.5rem;
+  --c-card-radius: 0.5rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   BASE LAYER
+   ═══════════════════════════════════════════════════════════════ */
 @layer base {
   html { @apply antialiased; }
   body {
@@ -12,146 +350,361 @@
   * { color: inherit; }
 }
 
-/* ==================== SCROLLBAR ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   SCROLLBAR — themed
+   ═══════════════════════════════════════════════════════════════ */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-bard-700 rounded-full; }
-::-webkit-scrollbar-thumb:hover { @apply bg-bard-600; }
-::selection { background: rgba(212, 168, 67, 0.25); color: #f0d98f; }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-base-700));
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-base-600));
+}
+::selection { background: var(--c-selection); color: var(--c-selection-text); }
 
-/* ==================== MESH BACKGROUND ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   MESH BACKGROUND — per-theme gradient layering
+   ═══════════════════════════════════════════════════════════════ */
 .bg-mesh {
-  background:
-    linear-gradient(135deg, rgba(90, 63, 158, 0.12) 0%, transparent 50%),
-    linear-gradient(225deg, rgba(212, 168, 67, 0.06) 0%, transparent 50%),
-    linear-gradient(315deg, rgba(123, 95, 196, 0.08) 0%, transparent 50%),
-    #0a0812;
+  background: var(--c-mesh), rgb(var(--c-base-950));
 }
 
-/* ==================== CARDS ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   CARDS — glass morphism with per-theme blur, radius, border
+   ═══════════════════════════════════════════════════════════════ */
 @layer components {
   .card {
-    @apply bg-bard-800/70 rounded-2xl border border-bard-700/40 shadow-lg backdrop-blur-sm;
+    background: var(--c-card-bg);
+    border-radius: var(--c-card-radius);
+    border: 1px solid var(--c-card-border);
+    box-shadow: 0 4px 24px -4px rgb(var(--c-shadow-color) / 0.4);
+    backdrop-filter: blur(var(--c-card-blur));
+    -webkit-backdrop-filter: blur(var(--c-card-blur));
   }
   .card-interactive {
-    @apply card hover:border-bard-600/60 hover:shadow-xl transition-all duration-300 cursor-pointer;
+    background: var(--c-card-bg);
+    border-radius: var(--c-card-radius);
+    border: 1px solid var(--c-card-border);
+    box-shadow: 0 4px 24px -4px rgb(var(--c-shadow-color) / 0.4);
+    backdrop-filter: blur(var(--c-card-blur));
+    -webkit-backdrop-filter: blur(var(--c-card-blur));
+    @apply hover:shadow-xl transition-all duration-300 cursor-pointer;
+  }
+  .card-interactive:hover {
+    border-color: rgb(var(--c-base-600) / 0.6);
   }
   .card-chat {
-    @apply bg-bard-800/50 rounded-2xl border border-bard-700/30 backdrop-blur-md;
+    background: rgb(var(--c-base-800) / 0.5);
+    border-radius: var(--c-card-radius);
+    border: 1px solid rgb(var(--c-base-700) / 0.3);
+    backdrop-filter: blur(calc(var(--c-card-blur) + 4px));
+    -webkit-backdrop-filter: blur(calc(var(--c-card-blur) + 4px));
   }
 }
 
-/* ==================== BUTTONS ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   BUTTONS — per-theme gradients, shadows, glow on hover
+   ═══════════════════════════════════════════════════════════════ */
 @layer components {
   .btn-primary {
-    @apply bg-gradient-to-r from-gold-500 to-gold-400 text-bard-950
-           font-semibold rounded-xl px-6 py-3
-           shadow-lg shadow-gold-500/20 hover:shadow-xl hover:shadow-gold-500/30
-           active:scale-[0.97] transition-all duration-200;
+    @apply font-semibold px-6 py-3 active:scale-[0.97] transition-all duration-200;
+    border-radius: var(--c-border-radius);
+    background: linear-gradient(135deg, rgb(var(--c-accent-500)), rgb(var(--c-accent-400)));
+    color: rgb(var(--c-base-950));
+    box-shadow: 0 4px 20px -4px rgb(var(--c-accent-500) / 0.3);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 6px 28px -4px rgb(var(--c-accent-500) / 0.45);
   }
   .btn-secondary {
-    @apply bg-bard-700/60 text-bard-200 font-medium rounded-xl px-5 py-2.5
-           border border-bard-600/40 hover:bg-bard-600/60
-           transition-all duration-200;
+    @apply font-medium px-5 py-2.5 transition-all duration-200;
+    border-radius: var(--c-border-radius);
+    background: rgb(var(--c-base-700) / 0.6);
+    color: rgb(var(--c-base-200));
+    border: 1px solid rgb(var(--c-base-600) / 0.4);
+  }
+  .btn-secondary:hover {
+    background: rgb(var(--c-base-600) / 0.6);
   }
   .btn-ghost {
-    @apply text-bard-300 font-medium rounded-xl px-4 py-2
-           hover:bg-bard-700/40 hover:text-white transition-all duration-200;
+    @apply font-medium px-4 py-2 transition-all duration-200;
+    border-radius: var(--c-border-radius);
+    color: rgb(var(--c-base-300));
+  }
+  .btn-ghost:hover {
+    background: rgb(var(--c-base-700) / 0.4);
+    color: white;
   }
   .btn-accent {
-    @apply bg-gradient-to-r from-bard-500 to-bard-400 text-white
-           font-semibold rounded-xl px-6 py-3 shadow-lg
-           hover:shadow-xl transition-all duration-200;
+    @apply font-semibold px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200;
+    border-radius: var(--c-border-radius);
+    background: linear-gradient(135deg, rgb(var(--c-base-500)), rgb(var(--c-base-400)));
+    color: white;
   }
 }
 
-/* ==================== INPUTS ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   INPUTS — themed focus rings, borders, backgrounds
+   ═══════════════════════════════════════════════════════════════ */
 @layer components {
   .input {
-    @apply w-full px-4 py-3 bg-bard-900/80 rounded-xl
-           border border-bard-700/50 text-white
-           focus:border-gold-500/60 focus:ring-2 focus:ring-gold-500/20
-           transition-all duration-200 outline-none
-           placeholder:text-bard-500;
+    @apply w-full px-4 py-3 text-white transition-all duration-200 outline-none;
+    border-radius: var(--c-border-radius);
+    background: rgb(var(--c-base-900) / 0.8);
+    border: 1px solid rgb(var(--c-base-700) / 0.5);
+    color: white;
+  }
+  .input::placeholder { color: rgb(var(--c-base-500)); }
+  .input:focus {
+    border-color: var(--c-focus-border);
+    box-shadow: 0 0 0 3px var(--c-focus-ring);
   }
   .textarea {
-    @apply input resize-none;
+    @apply w-full px-4 py-3 text-white transition-all duration-200 outline-none resize-none;
+    border-radius: var(--c-border-radius);
+    background: rgb(var(--c-base-900) / 0.8);
+    border: 1px solid rgb(var(--c-base-700) / 0.5);
+  }
+  .textarea::placeholder { color: rgb(var(--c-base-500)); }
+  .textarea:focus {
+    border-color: var(--c-focus-border);
+    box-shadow: 0 0 0 3px var(--c-focus-ring);
   }
 }
 
-/* ==================== CHIPS ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   CHIPS — themed active state
+   ═══════════════════════════════════════════════════════════════ */
 @layer components {
   .chip {
-    @apply px-3 py-1.5 rounded-full text-sm font-medium
-           bg-bard-800/60 text-bard-300 border border-bard-700/40
-           hover:bg-bard-700/60 hover:text-white
-           transition-all duration-200 cursor-pointer;
+    @apply px-3 py-1.5 text-sm font-medium transition-all duration-200 cursor-pointer;
+    border-radius: 999px;
+    background: rgb(var(--c-base-800) / 0.6);
+    color: rgb(var(--c-base-300));
+    border: 1px solid rgb(var(--c-base-700) / 0.4);
+  }
+  .chip:hover {
+    background: rgb(var(--c-base-700) / 0.6);
+    color: white;
   }
   .chip-active {
-    @apply bg-gold-500/15 text-gold-300 border-gold-500/40;
+    background: rgb(var(--c-accent-500) / 0.15);
+    color: rgb(var(--c-accent-300));
+    border-color: rgb(var(--c-accent-500) / 0.4);
   }
 }
 
-/* ==================== GLOW EFFECTS ==================== */
-.glow-gold { box-shadow: 0 0 32px -4px rgba(212, 168, 67, 0.3); }
-.glow-bard { box-shadow: 0 0 32px -4px rgba(123, 95, 196, 0.4); }
+/* ═══════════════════════════════════════════════════════════════
+   GLOW EFFECTS — per-theme glow color and spread
+   ═══════════════════════════════════════════════════════════════ */
+.glow-gold { box-shadow: 0 0 var(--c-glow-spread) -4px var(--c-glow-accent); }
+.glow-bard { box-shadow: 0 0 var(--c-glow-spread) -4px var(--c-glow-base); }
 
-/* ==================== STATUS DOTS ==================== */
-.status-dot {
-  @apply w-2 h-2 rounded-full;
-}
+/* ═══════════════════════════════════════════════════════════════
+   STATUS DOTS
+   ═══════════════════════════════════════════════════════════════ */
+.status-dot { @apply w-2 h-2 rounded-full; }
 .status-active {
   @apply bg-emerald-400 animate-pulse;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+  box-shadow: 0 0 8px rgb(52 211 153 / 0.5);
 }
 .status-warning {
   @apply bg-amber-400;
-  box-shadow: 0 0 8px rgba(251, 191, 36, 0.4);
+  box-shadow: 0 0 8px rgb(251 191 36 / 0.4);
 }
-.status-inactive {
-  @apply bg-bard-600;
-}
+.status-inactive { background: rgb(var(--c-base-600)); }
 
-/* ==================== RANGE SLIDER ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   RANGE SLIDER — themed thumb glow
+   ═══════════════════════════════════════════════════════════════ */
 input[type="range"] {
-  @apply w-full h-1.5 bg-bard-700 rounded-full appearance-none cursor-pointer;
+  @apply w-full h-1.5 rounded-full appearance-none cursor-pointer;
+  background: rgb(var(--c-base-700));
 }
 input[type="range"]::-webkit-slider-thumb {
-  @apply appearance-none w-4 h-4 bg-gold-500 rounded-full cursor-pointer;
-  box-shadow: 0 2px 8px rgba(212, 168, 67, 0.4);
+  @apply appearance-none w-4 h-4 rounded-full cursor-pointer;
+  background: rgb(var(--c-accent-500));
+  box-shadow: 0 2px 10px rgb(var(--c-accent-500) / 0.5);
 }
 input[type="range"]::-webkit-slider-thumb:hover {
-  @apply bg-gold-400;
+  background: rgb(var(--c-accent-400));
+  box-shadow: 0 2px 16px rgb(var(--c-accent-500) / 0.6);
 }
 input[type="range"]::-moz-range-thumb {
-  @apply w-4 h-4 bg-gold-500 rounded-full border-0 cursor-pointer;
+  @apply w-4 h-4 rounded-full border-0 cursor-pointer;
+  background: rgb(var(--c-accent-500));
 }
 
-/* ==================== CHECKBOX ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   CHECKBOX — themed
+   ═══════════════════════════════════════════════════════════════ */
 input[type="checkbox"] {
-  @apply w-5 h-5 rounded-lg border-2 border-bard-600
-         text-gold-500 cursor-pointer bg-bard-800
-         focus:ring-2 focus:ring-gold-500/20 focus:ring-offset-0;
+  @apply w-5 h-5 border-2 cursor-pointer;
+  border-radius: calc(var(--c-border-radius) * 0.4);
+  border-color: rgb(var(--c-base-600));
+  background: rgb(var(--c-base-800));
+  color: rgb(var(--c-accent-500));
+}
+input[type="checkbox"]:focus {
+  box-shadow: 0 0 0 3px var(--c-focus-ring);
 }
 
-/* ==================== SHIMMER ==================== */
+/* ═══════════════════════════════════════════════════════════════
+   SHIMMER — per-theme speed and color
+   ═══════════════════════════════════════════════════════════════ */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 .shimmer-text {
-  background: linear-gradient(90deg, #d4a843 0%, #f0d98f 25%, #d4a843 50%, #f0d98f 75%, #d4a843 100%);
+  background: linear-gradient(90deg,
+    var(--c-shimmer-1) 0%, var(--c-shimmer-2) 25%,
+    var(--c-shimmer-1) 50%, var(--c-shimmer-2) 75%,
+    var(--c-shimmer-1) 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: shimmer 4s linear infinite;
+  animation: shimmer var(--c-shimmer-speed) linear infinite;
 }
 
-/* ==================== VISUALIZER ==================== */
-.visualizer-gradient {
-  background: linear-gradient(180deg,
-    rgba(90, 63, 158, 0.08) 0%,
-    rgba(212, 168, 67, 0.04) 50%,
-    rgba(123, 95, 196, 0.08) 100%
-  );
+/* ═══════════════════════════════════════════════════════════════
+   VISUALIZER — per-theme gradient
+   ═══════════════════════════════════════════════════════════════ */
+.visualizer-gradient { background: var(--c-vis); }
+
+/* ═══════════════════════════════════════════════════════════════
+   NOIR — special overrides for cinematic feel
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="noir"] .status-active {
+  @apply bg-red-500 animate-pulse;
+  box-shadow: 0 0 10px rgb(200 30 40 / 0.6);
+}
+[data-theme="noir"] .status-warning {
+  @apply bg-red-400;
+  box-shadow: 0 0 8px rgb(200 30 40 / 0.4);
+}
+[data-theme="noir"] .chip-active {
+  background: rgb(200 30 40 / 0.12);
+  color: #ff8888;
+  border-color: rgb(200 30 40 / 0.35);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   OBSIDIAN — neon scan-line glow effect on cards
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="obsidian"] .card {
+  border: 1px solid rgb(0 230 220 / 0.06);
+  box-shadow:
+    0 4px 24px -4px rgb(0 0 0 / 0.6),
+    inset 0 1px 0 rgb(0 230 220 / 0.04);
+}
+[data-theme="obsidian"] .card-interactive:hover {
+  border-color: rgb(0 230 220 / 0.15);
+  box-shadow:
+    0 8px 32px -4px rgb(0 0 0 / 0.7),
+    0 0 20px -4px rgb(0 230 220 / 0.08);
+}
+[data-theme="obsidian"] .chip-active {
+  background: rgb(0 230 220 / 0.1);
+  color: #78fcf8;
+  border-color: rgb(0 230 220 / 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   VELVET — warm inner glow on cards
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="velvet"] .card {
+  box-shadow:
+    0 4px 24px -4px rgb(16 4 8 / 0.5),
+    inset 0 0 40px -20px rgb(224 180 160 / 0.04);
+}
+[data-theme="velvet"] .chip-active {
+  background: rgb(224 180 160 / 0.12);
+  color: #f6dccd;
+  border-color: rgb(224 180 160 / 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   AURORA — prismatic border shimmer on hover
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="aurora"] .card-interactive:hover {
+  border-color: rgb(80 220 180 / 0.25);
+  box-shadow:
+    0 8px 32px -4px rgb(2 8 12 / 0.5),
+    0 0 24px -8px rgb(220 100 220 / 0.1),
+    0 0 24px -8px rgb(80 220 180 / 0.08);
+}
+[data-theme="aurora"] .chip-active {
+  background: linear-gradient(135deg, rgb(80 220 180 / 0.1), rgb(220 100 220 / 0.1));
+  color: #96f8e6;
+  border-color: rgb(80 220 180 / 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   FORGE — ember glow on interactive elements
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="forge"] .card-interactive:hover {
+  border-color: rgb(245 158 40 / 0.2);
+  box-shadow:
+    0 8px 32px -4px rgb(8 6 4 / 0.6),
+    0 0 16px -4px rgb(245 158 40 / 0.08);
+}
+[data-theme="forge"] .chip-active {
+  background: rgb(245 158 40 / 0.12);
+  color: #fed478;
+  border-color: rgb(245 158 40 / 0.35);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SAKURA — soft bloom glow
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="sakura"] .card {
+  box-shadow:
+    0 4px 24px -4px rgb(12 6 14 / 0.4),
+    inset 0 0 60px -30px rgb(240 150 170 / 0.03);
+}
+[data-theme="sakura"] .card-interactive:hover {
+  border-color: rgb(240 150 170 / 0.2);
+  box-shadow:
+    0 8px 32px -4px rgb(12 6 14 / 0.5),
+    0 0 28px -8px rgb(240 150 170 / 0.08);
+}
+[data-theme="sakura"] .chip-active {
+  background: rgb(240 150 170 / 0.12);
+  color: #fccddb;
+  border-color: rgb(240 150 170 / 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   OCEAN — deep bioluminescent glow
+   ═══════════════════════════════════════════════════════════════ */
+[data-theme="ocean"] .card {
+  box-shadow:
+    0 4px 24px -4px rgb(2 4 12 / 0.5),
+    inset 0 -1px 0 rgb(60 225 195 / 0.03);
+}
+[data-theme="ocean"] .card-interactive:hover {
+  border-color: rgb(60 225 195 / 0.15);
+  box-shadow:
+    0 8px 32px -4px rgb(2 4 12 / 0.6),
+    0 0 20px -4px rgb(60 225 195 / 0.06);
+}
+[data-theme="ocean"] .chip-active {
+  background: rgb(60 225 195 / 0.1);
+  color: #96f8e6;
+  border-color: rgb(60 225 195 / 0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TRANSITIONS — smooth theme switching
+   ═══════════════════════════════════════════════════════════════ */
+body, .bg-mesh, .card, .card-interactive, .card-chat,
+.btn-primary, .btn-secondary, .btn-ghost, .btn-accent,
+.input, .textarea, .chip, .status-inactive,
+::-webkit-scrollbar-thumb, .visualizer-gradient {
+  transition: background 0.4s ease, border-color 0.4s ease,
+              color 0.3s ease, box-shadow 0.4s ease,
+              backdrop-filter 0.4s ease;
 }

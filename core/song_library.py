@@ -33,6 +33,11 @@ class SongRecord:
     created_at: str = ""
     favorite: bool = False
     notes: str = ""
+    render_status: str = "ready"
+    render_error: str = ""
+    actual_duration_sec: float = 0.0
+    waveform_peaks: list[float] = field(default_factory=list)
+    file_missing: bool = False
 
     def __post_init__(self):
         if not self.created_at:
@@ -78,9 +83,11 @@ class SongLibrary:
         return next((s for s in self._songs if s.id == song_id), None)
 
     def list_all(self, limit: int = 100) -> list[SongRecord]:
+        self._verify_songs()
         return self._songs[:limit]
 
     def search(self, query: str) -> list[SongRecord]:
+        self._verify_songs()
         q = query.lower()
         return [
             s for s in self._songs
@@ -122,6 +129,33 @@ class SongLibrary:
             self._save()
         return song
 
+    def update_metadata(
+        self,
+        song_id: str,
+        *,
+        actual_duration_sec: Optional[float] = None,
+        waveform_peaks: Optional[list[float]] = None,
+        file_missing: Optional[bool] = None,
+    ) -> Optional[SongRecord]:
+        song = self.get(song_id)
+        if not song:
+            return None
+        if actual_duration_sec is not None and actual_duration_sec > 0:
+            song.actual_duration_sec = actual_duration_sec
+        if waveform_peaks is not None:
+            song.waveform_peaks = waveform_peaks
+        if file_missing is not None:
+            song.file_missing = file_missing
+            if file_missing and song.render_status == "ready":
+                song.render_status = "missing_file"
+                song.render_error = "Audio file missing from disk."
+            elif not file_missing and song.render_status == "missing_file":
+                song.render_status = "ready"
+                if song.render_error == "Audio file missing from disk.":
+                    song.render_error = ""
+        self._save()
+        return song
+
     def favorites(self) -> list[SongRecord]:
         return [s for s in self._songs if s.favorite]
 
@@ -132,6 +166,7 @@ class SongLibrary:
         return [s for s in self._songs if s.emotion.lower() == emotion.lower()]
 
     def stats(self) -> dict:
+        self._verify_songs()
         genres = {}
         emotions = {}
         for s in self._songs:
@@ -143,3 +178,23 @@ class SongLibrary:
             "genres": genres,
             "emotions": emotions,
         }
+
+    def _verify_songs(self):
+        changed = False
+        for song in self._songs:
+            missing = bool(song.file_path) and not Path(song.file_path).exists()
+            if missing != song.file_missing:
+                song.file_missing = missing
+                changed = True
+            if missing and song.render_status == "ready":
+                song.render_status = "missing_file"
+                if not song.render_error:
+                    song.render_error = "Audio file missing from disk."
+                changed = True
+            elif not missing and song.render_status == "missing_file":
+                song.render_status = "ready"
+                if song.render_error == "Audio file missing from disk.":
+                    song.render_error = ""
+                changed = True
+        if changed:
+            self._save()

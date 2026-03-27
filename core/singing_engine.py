@@ -12,11 +12,12 @@ API reference:
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import requests
 
@@ -52,16 +53,22 @@ class SingingEngine:
         music_prompt: str,
         duration_ms: int = 60_000,
         save_path: Optional[str] = None,
+        on_progress: Optional[Callable[[str], None]] = None,
     ) -> SingResult:
         if not self.cfg.elevenlabs.available:
             return SingResult(error="ElevenLabs API key not configured", success=False)
 
+        progress = on_progress or (lambda msg: None)
+
+        progress("Creating composition plan...")
         result = self._sing_with_plan(lyrics, music_prompt, duration_ms)
         if not result.success:
             log.warning("Plan-based singing failed, trying simple generation: %s", result.error)
+            progress("Retrying with direct vocal render...")
             result = self._sing_simple(lyrics, music_prompt, duration_ms)
 
         if result.success and save_path:
+            progress("Saving rendered audio...")
             result.file_path = self._save_audio(result.audio_b64, save_path)
 
         return result
@@ -79,19 +86,15 @@ class SingingEngine:
         base = self.cfg.elevenlabs.base_url
 
         try:
-            plan_resp = requests.post(
+            plan = self._post_json(
                 f"{base}/music/plan",
-                headers=self._headers(),
-                json={
+                {
                     "prompt": music_prompt,
                     "model_id": self.cfg.elevenlabs.music_model,
                     "music_length_ms": duration_ms,
                 },
-                timeout=30,
             )
-            plan_resp.raise_for_status()
-            plan = plan_resp.json()
-        except Exception as exc:
+        except requests.RequestException as exc:
             return SingResult(error=f"Plan request failed: {exc}", success=False)
 
         try:
@@ -108,18 +111,14 @@ class SingingEngine:
             log.warning("Failed to inject lyrics into plan: %s", exc)
 
         try:
-            render_resp = requests.post(
+            render_bytes = self._post_audio(
                 f"{base}/music/stream",
-                headers=self._headers(),
-                json={
+                {
                     "composition_plan": plan,
                     "model_id": self.cfg.elevenlabs.music_model,
                 },
-                timeout=300,
             )
-            render_resp.raise_for_status()
-
-            audio_b64 = base64.b64encode(render_resp.content).decode()
+            audio_b64 = base64.b64encode(render_bytes).decode()
             return SingResult(
                 audio_b64=audio_b64,
                 duration_sec=duration_ms / 1000.0,
@@ -127,7 +126,7 @@ class SingingEngine:
                 success=bool(audio_b64),
                 error="" if audio_b64 else "No audio in response",
             )
-        except Exception as exc:
+        except requests.RequestException as exc:
             return SingResult(error=f"Stream render failed: {exc}", success=False)
 
     def _sing_simple(
@@ -141,19 +140,15 @@ class SingingEngine:
         )
 
         try:
-            resp = requests.post(
+            render_bytes = self._post_audio(
                 f"{base}/music/stream",
-                headers=self._headers(),
-                json={
+                {
                     "prompt": combined_prompt,
                     "model_id": self.cfg.elevenlabs.music_model,
                     "music_length_ms": min(duration_ms, 600_000),
                 },
-                timeout=300,
             )
-            resp.raise_for_status()
-
-            audio_b64 = base64.b64encode(resp.content).decode()
+            audio_b64 = base64.b64encode(render_bytes).decode()
             return SingResult(
                 audio_b64=audio_b64,
                 duration_sec=duration_ms / 1000.0,
@@ -161,37 +156,35 @@ class SingingEngine:
                 success=bool(audio_b64),
                 error="" if audio_b64 else "No audio returned",
             )
-        except Exception as exc:
+        except requests.RequestException as exc:
             return SingResult(error=f"Simple generation failed: {exc}", success=False)
 
     def generate_instrumental(
-        self, music_prompt: str, duration_ms: int = 60_000
+        self, music_prompt: str, duration_ms: int = 60_000, on_progress: Optional[Callable[[str], None]] = None
     ) -> SingResult:
         """Instrumental-only generation (no vocals)."""
         base = self.cfg.elevenlabs.base_url
+        progress = on_progress or (lambda msg: None)
+        progress("Rendering instrumental track...")
 
         try:
-            resp = requests.post(
+            render_bytes = self._post_audio(
                 f"{base}/music/stream",
-                headers=self._headers(),
-                json={
+                {
                     "prompt": music_prompt,
                     "model_id": self.cfg.elevenlabs.music_model,
                     "music_length_ms": min(duration_ms, 600_000),
                     "force_instrumental": True,
                 },
-                timeout=300,
             )
-            resp.raise_for_status()
-
-            audio_b64 = base64.b64encode(resp.content).decode()
+            audio_b64 = base64.b64encode(render_bytes).decode()
             return SingResult(
                 audio_b64=audio_b64,
                 duration_sec=duration_ms / 1000.0,
                 engine=f"{self._engine_prefix}_instrumental",
                 success=bool(audio_b64),
             )
-        except Exception as exc:
+        except requests.RequestException as exc:
             return SingResult(error=f"Instrumental generation failed: {exc}", success=False)
 
     def _save_audio(self, audio_b64: str, path: str) -> str:
@@ -205,3 +198,78 @@ class SingingEngine:
         except Exception as exc:
             log.error("Failed to save audio: %s", exc)
             return ""
+
+    def _post_json(self, url: str, payload: dict) -> dict:
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                resp = requests.post(
+                    url,
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=30,
+                )
+                self._raise_for_status(resp)
+                return resp.json()
+            except requests.RequestException as exc:
+                last_exc = exc
+                if not self._is_retryable(exc, getattr(exc, "response", None)) or attempt == 1:
+                    raise
+                time.sleep(1.5)
+        raise requests.RequestException(str(last_exc) if last_exc else "Request failed")
+
+    def _post_audio(self, url: str, payload: dict) -> bytes:
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                resp = requests.post(
+                    url,
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=300,
+                )
+                self._raise_for_status(resp)
+                self._validate_audio_response(resp)
+                return resp.content
+            except requests.RequestException as exc:
+                last_exc = exc
+                if not self._is_retryable(exc, getattr(exc, "response", None)) or attempt == 1:
+                    raise
+                time.sleep(2.0)
+        raise requests.RequestException(str(last_exc) if last_exc else "Request failed")
+
+    def _raise_for_status(self, resp: requests.Response):
+        if resp.ok:
+            return
+        detail = self._response_detail(resp)
+        raise requests.HTTPError(
+            f"status {resp.status_code}: {detail}",
+            response=resp,
+        )
+
+    def _validate_audio_response(self, resp: requests.Response):
+        content_type = resp.headers.get("content-type", "").lower()
+        if "application/json" in content_type or "text/" in content_type:
+            raise requests.RequestException(
+                f"Expected audio bytes but received {content_type}: {self._response_detail(resp)}"
+            )
+        if len(resp.content) < 1024:
+            raise requests.RequestException(
+                f"Received an unexpectedly small audio payload ({len(resp.content)} bytes)."
+            )
+
+    @staticmethod
+    def _is_retryable(exc: requests.RequestException, resp: Optional[requests.Response]) -> bool:
+        if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+            return True
+        if resp is not None and resp.status_code in {429, 500, 502, 503, 504}:
+            return True
+        return False
+
+    @staticmethod
+    def _response_detail(resp: requests.Response) -> str:
+        try:
+            data = resp.json()
+            return json.dumps(data)[:300]
+        except ValueError:
+            return resp.text[:300]

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import shutil
 import uuid
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
@@ -21,6 +23,23 @@ log = logging.getLogger(__name__)
 
 
 @dataclass
+class JournalAttachment:
+    id: str = ""
+    file_name: str = ""
+    stored_path: str = ""
+    source_path: str = ""
+    source_type: str = "document"
+    extracted_text: str = ""
+    created_at: str = ""
+
+    def __post_init__(self):
+        if not self.id:
+            self.id = str(uuid.uuid4())
+        if not self.created_at:
+            self.created_at = datetime.utcnow().isoformat()
+
+
+@dataclass
 class JournalEntry:
     id: str = ""
     timestamp: str = ""
@@ -29,12 +48,19 @@ class JournalEntry:
     emotion: str = ""
     people: list[str] = field(default_factory=list)
     places: list[str] = field(default_factory=list)
+    attachments: list[JournalAttachment] = field(default_factory=list)
+    source_type: str = "journal"
+    source_name: str = ""
 
     def __post_init__(self):
         if not self.id:
             self.id = str(uuid.uuid4())
         if not self.timestamp:
             self.timestamp = datetime.utcnow().isoformat()
+        self.attachments = [
+            a if isinstance(a, JournalAttachment) else JournalAttachment(**a)
+            for a in self.attachments
+        ]
 
 
 @dataclass
@@ -51,6 +77,7 @@ class StoryWeaver:
     def __init__(self, config: Optional[Config] = None):
         self.cfg = config or Config.load()
         self.journal_path = self.cfg.journal_dir / "journal.json"
+        self.attachments_dir = self.cfg.journal_dir / "attachments"
         self._entries: list[JournalEntry] = []
         self._load()
 
@@ -65,6 +92,7 @@ class StoryWeaver:
 
     def _save(self):
         self.cfg.journal_dir.mkdir(parents=True, exist_ok=True)
+        self.attachments_dir.mkdir(parents=True, exist_ok=True)
         data = {"entries": [asdict(e) for e in self._entries]}
         self.journal_path.write_text(
             json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
@@ -86,15 +114,64 @@ class StoryWeaver:
             return True
         return False
 
-    def update_entry(self, entry_id: str, text: str, tags: list[str] = None) -> Optional[JournalEntry]:
+    def update_entry(
+        self,
+        entry_id: str,
+        text: Optional[str] = None,
+        tags: Optional[list[str]] = None,
+        emotion: Optional[str] = None,
+        people: Optional[list[str]] = None,
+        places: Optional[list[str]] = None,
+    ) -> Optional[JournalEntry]:
         for e in self._entries:
             if e.id == entry_id:
-                e.text = text
+                if text is not None:
+                    e.text = text
                 if tags is not None:
                     e.tags = tags
+                if emotion is not None:
+                    e.emotion = emotion
+                if people is not None:
+                    e.people = people
+                if places is not None:
+                    e.places = places
                 self._save()
                 return e
         return None
+
+    def attach_document(self, entry_id: str, file_path: str) -> Optional[JournalEntry]:
+        entry = next((e for e in self._entries if e.id == entry_id), None)
+        if not entry:
+            return None
+        attachment = self._store_attachment(file_path)
+        entry.attachments.append(attachment)
+        self._save()
+        return entry
+
+    def import_document(
+        self,
+        file_path: str,
+        emotion: str = "",
+        tags: Optional[list[str]] = None,
+        people: Optional[list[str]] = None,
+        places: Optional[list[str]] = None,
+    ) -> JournalEntry:
+        attachment = self._store_attachment(file_path)
+        extracted = attachment.extracted_text.strip()
+        summary = extracted[:2500] if extracted else f"Imported document: {attachment.file_name}"
+        entry = JournalEntry(
+            text=summary,
+            tags=tags or [],
+            emotion=emotion,
+            people=people or [],
+            places=places or [],
+            attachments=[attachment],
+            source_type="document_import",
+            source_name=attachment.file_name,
+        )
+        self._entries.append(entry)
+        self._save()
+        return entry
 
     def build_context(self, topic: str = "", emotion: str = "", max_chars: int = 2000) -> str:
         """Build a rich narrative context string for the lyrics engine."""
@@ -107,7 +184,8 @@ class StoryWeaver:
 
         for entry in relevant:
             snippet = entry.text[:300]
-            line = f"- [{entry.timestamp[:10]}] {snippet}"
+            source_label = f" ({entry.source_name})" if entry.source_name else ""
+            line = f"- [{entry.timestamp[:10]}]{source_label} {snippet}"
             if entry.people:
                 line += f" (people: {', '.join(entry.people)})"
             if entry.places:
@@ -117,6 +195,16 @@ class StoryWeaver:
                 break
             parts.append(line)
             char_count += len(line)
+
+            for attachment in entry.attachments[:2]:
+                attachment_snippet = attachment.extracted_text[:200].strip()
+                if not attachment_snippet:
+                    continue
+                attachment_line = f"  attached:{attachment.file_name} — {attachment_snippet}"
+                if char_count + len(attachment_line) > max_chars:
+                    break
+                parts.append(attachment_line)
+                char_count += len(attachment_line)
 
         themes = self.extract_themes()
         if themes:
@@ -132,7 +220,8 @@ class StoryWeaver:
         scored: list[tuple[float, JournalEntry]] = []
         for entry in self._entries:
             score = 0.0
-            text_lower = entry.text.lower()
+            attachment_text = " ".join(a.extracted_text for a in entry.attachments)
+            text_lower = f"{entry.text} {attachment_text}".lower()
             if topic_lower and topic_lower in text_lower:
                 score += 3.0
             for tag in entry.tags:
@@ -199,6 +288,43 @@ class StoryWeaver:
             "themes": len(self.extract_themes()),
             "people": len(self.get_people()),
             "places": len(self.get_places()),
+            "attachments": sum(len(e.attachments) for e in self._entries),
             "earliest": self._entries[-1].timestamp if self._entries else None,
             "latest": self._entries[0].timestamp if self._entries else None,
         }
+
+    def _store_attachment(self, file_path: str) -> JournalAttachment:
+        source = Path(file_path)
+        if not source.exists():
+            raise FileNotFoundError(f"Attachment not found: {file_path}")
+
+        self.attachments_dir.mkdir(parents=True, exist_ok=True)
+        unique_name = f"{uuid.uuid4()}-{source.name}"
+        destination = self.attachments_dir / unique_name
+        shutil.copy2(source, destination)
+
+        return JournalAttachment(
+            file_name=source.name,
+            stored_path=str(destination),
+            source_path=str(source),
+            source_type="document",
+            extracted_text=self._extract_document_text(destination),
+        )
+
+    def _extract_document_text(self, path: Path) -> str:
+        suffix = path.suffix.lower()
+        if suffix in {".txt", ".md", ".json", ".jsonl", ".log", ".csv", ".py"}:
+            try:
+                return path.read_text(encoding="utf-8", errors="ignore")[:12000]
+            except Exception:
+                return ""
+
+        if suffix == ".pdf":
+            try:
+                raw = path.read_bytes().decode("latin-1", errors="ignore")
+                chunks = [match.strip() for match in re.findall(r"\(([^()]*)\)", raw)]
+                return " ".join(chunks)[:12000]
+            except Exception:
+                return ""
+
+        return ""

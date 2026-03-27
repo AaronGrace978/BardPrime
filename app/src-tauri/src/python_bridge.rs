@@ -59,30 +59,43 @@ fn find_python() -> Result<String, String> {
 }
 
 fn get_bardprime_path() -> Result<String, String> {
-    // exe is in: BardPrime/app/src-tauri/target/{debug|release}/bardprime.exe
-    // We need: BardPrime/
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Failed to get exe path: {}", e))?;
-
-    let bardprime_path = exe_path
-        .parent() // target/debug or target/release
-        .and_then(|p| p.parent()) // target
-        .and_then(|p| p.parent()) // src-tauri
-        .and_then(|p| p.parent()) // app
-        .and_then(|p| p.parent()) // BardPrime (root)
-        .ok_or("Could not find BardPrime root directory")?
-        .to_path_buf();
-
-    // Verify bardprime.py exists
-    let entry = bardprime_path.join("bardprime.py");
-    if !entry.exists() {
-        return Err(format!(
-            "bardprime.py not found at {}",
-            entry.display()
-        ));
+    if let Ok(root) = std::env::var("BARDPRIME_ROOT") {
+        let root_path = std::path::PathBuf::from(&root);
+        if root_path.join("bardprime.py").exists() {
+            return Ok(root_path.display().to_string());
+        }
     }
 
-    Ok(bardprime_path.display().to_string())
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Failed to get exe path: {}", e))?;
+    let current_dir = std::env::current_dir().ok();
+
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    if let Some(dir) = current_dir {
+        candidates.push(dir);
+    }
+
+    if let Some(parent) = exe_path.parent() {
+        candidates.push(parent.to_path_buf());
+        candidates.push(parent.join("resources"));
+        candidates.push(parent.join("resources").join("bardprime"));
+        for ancestor in parent.ancestors().take(8) {
+            candidates.push(ancestor.to_path_buf());
+        }
+    }
+
+    for candidate in candidates {
+        let script = candidate.join("bardprime.py");
+        if script.exists() {
+            return Ok(candidate.display().to_string());
+        }
+    }
+
+    Err(format!(
+        "bardprime.py not found near executable {}. Set BARDPRIME_ROOT if needed.",
+        exe_path.display()
+    ))
 }
 
 fn init_pool() -> Result<(), String> {
@@ -143,7 +156,7 @@ pub async fn call_python(payload: &Value) -> Result<Value, String> {
     }
 
     let timeout_secs = match action {
-        "compose" => 300,       // 5 min for full composition
+        "compose" => 300,
         "generate_lyrics" => 60,
         "compose_procedural" => 30,
         _ => 60,
@@ -153,24 +166,29 @@ pub async fn call_python(payload: &Value) -> Result<Value, String> {
         Duration::from_secs(timeout_secs),
         execute_python_call(payload),
     )
-    .await
-    .map_err(|_| format!("Python call timed out for action '{}'", action))?;
+    .await;
 
-    // Cache if applicable
-    if let (Ok(ref value), Some(ttl)) = (&result, should_cache(action)) {
-        let mut pool = PYTHON_POOL.lock().map_err(|e| e.to_string())?;
-        if let Some(ref mut p) = *pool {
-            p.cache.insert(
-                key,
-                CachedResult {
-                    value: value.clone(),
-                    expires_at: Instant::now() + ttl,
-                },
-            );
+    match result {
+        Ok(inner) => {
+            if let (Ok(ref value), Some(ttl)) = (&inner, should_cache(action)) {
+                let mut pool = PYTHON_POOL.lock().map_err(|e| e.to_string())?;
+                if let Some(ref mut p) = *pool {
+                    p.cache.insert(
+                        key,
+                        CachedResult {
+                            value: value.clone(),
+                            expires_at: Instant::now() + ttl,
+                        },
+                    );
+                }
+            }
+            inner
         }
+        Err(_) => Err(format!(
+            "Python call timed out for action '{}' after {}s",
+            action, timeout_secs
+        )),
     }
-
-    result
 }
 
 fn build_python_command(
@@ -219,7 +237,14 @@ fn build_python_command(
                     cmd.env("OLLAMA_HOST", h);
                 }
             }
-            if let Some(m) = cfg["ollama_model"].as_str() {
+            let ollama_model_key = match cfg["provider"].as_str() {
+                Some("ollama_cloud") => "ollama_cloud_model",
+                _ => "ollama_local_model",
+            };
+            if let Some(m) = cfg[ollama_model_key]
+                .as_str()
+                .or_else(|| cfg["ollama_model"].as_str())
+            {
                 if !m.is_empty() {
                     cmd.env("OLLAMA_MODEL", m);
                 }
@@ -290,15 +315,46 @@ async fn execute_python_call(payload: &Value) -> Result<Value, String> {
 
     let payload_str = payload.to_string();
     let (tx, rx) = oneshot::channel();
+    let kill_flag = Arc::new(AtomicBool::new(false));
+    let kill_flag_clone = Arc::clone(&kill_flag);
 
     std::thread::spawn(move || {
-        let output = build_python_command(&python_path, &bardprime_path, &payload_str).output();
-        let _ = tx.send(output);
+        let mut cmd = build_python_command(&python_path, &bardprime_path, &payload_str);
+        match cmd.spawn() {
+            Ok(mut child) => {
+                loop {
+                    if kill_flag_clone.load(Ordering::SeqCst) {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        let _ = tx.send(Err(std::io::Error::new(
+                            std::io::ErrorKind::Interrupted,
+                            "Python call was terminated due to timeout",
+                        )));
+                        return;
+                    }
+                    match child.try_wait() {
+                        Ok(Some(_)) => break,
+                        Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                        Err(e) => {
+                            let _ = tx.send(Err(e));
+                            return;
+                        }
+                    }
+                }
+                let _ = tx.send(child.wait_with_output());
+            }
+            Err(e) => {
+                let _ = tx.send(Err(e));
+            }
+        }
     });
 
     let output = rx
         .await
-        .map_err(|_| "Python thread was cancelled")?
+        .map_err(|_| {
+            kill_flag.store(true, Ordering::SeqCst);
+            "Python thread was cancelled".to_string()
+        })?
         .map_err(|e| format!("Failed to execute Python: {}", e))?;
 
     parse_python_output(output)
@@ -334,27 +390,38 @@ pub async fn call_python_cancellable(
         _ => 60,
     };
 
+    let cancel_on_timeout = Arc::clone(&cancel);
+
     let result = timeout(
         Duration::from_secs(timeout_secs),
         execute_python_call_cancellable(payload, cancel),
     )
-    .await
-    .map_err(|_| format!("Python call timed out for action '{}'", action))?;
+    .await;
 
-    if let (Ok(ref value), Some(ttl)) = (&result, should_cache(action)) {
-        let mut pool = PYTHON_POOL.lock().map_err(|e| e.to_string())?;
-        if let Some(ref mut p) = *pool {
-            p.cache.insert(
-                key,
-                CachedResult {
-                    value: value.clone(),
-                    expires_at: Instant::now() + ttl,
-                },
-            );
+    match result {
+        Ok(inner) => {
+            if let (Ok(ref value), Some(ttl)) = (&inner, should_cache(action)) {
+                let mut pool = PYTHON_POOL.lock().map_err(|e| e.to_string())?;
+                if let Some(ref mut p) = *pool {
+                    p.cache.insert(
+                        key,
+                        CachedResult {
+                            value: value.clone(),
+                            expires_at: Instant::now() + ttl,
+                        },
+                    );
+                }
+            }
+            inner
+        }
+        Err(_) => {
+            cancel_on_timeout.store(true, Ordering::SeqCst);
+            Err(format!(
+                "Composition timed out after {} seconds. The Bard took too long — try a shorter duration or simpler prompt.",
+                timeout_secs
+            ))
         }
     }
-
-    result
 }
 
 async fn execute_python_call_cancellable(

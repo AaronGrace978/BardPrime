@@ -3,11 +3,26 @@ export interface Song {
   topic: string; emotion: string; genre: string; mood_tags: string[];
   duration_sec: number; file_path: string; engine: string;
   created_at: string; favorite: boolean; notes: string;
+  render_status: string; render_error: string; actual_duration_sec: number;
+  waveform_peaks: number[]; file_missing: boolean;
+}
+
+export interface JournalAttachment {
+  id: string;
+  file_name: string;
+  stored_path: string;
+  source_path: string;
+  source_type: string;
+  extracted_text: string;
+  created_at: string;
 }
 
 export interface JournalEntry {
   id: string; timestamp: string; text: string; tags: string[];
   emotion: string; people: string[]; places: string[];
+  attachments?: JournalAttachment[];
+  source_type?: string;
+  source_name?: string;
 }
 
 export interface GenreInfo { name: string; description: string; }
@@ -25,6 +40,7 @@ export interface ComposeResult {
   lyrics: string; music_prompt: string; audio_b64: string;
   file_path: string; duration_sec: number; engine: string;
   genre: string; emotion: string; mood_tags: string[]; error: string;
+  render_status: string; render_error: string; actual_duration_sec: number;
 }
 
 export interface LyricsResult {
@@ -36,6 +52,7 @@ export interface ChatMessage {
   id: string; role: "user" | "assistant"; content: string;
   emotion?: { valence: number; arousal: number; dominance: number; primary: string };
   timestamp: Date; shouldSing?: boolean; songTopic?: string;
+  warning?: string; fallbackUsed?: boolean; providerLabel?: string;
 }
 
 export type Panel = "compose" | "chat" | "library" | "journal" | "settings";

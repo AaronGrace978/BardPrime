@@ -12,12 +12,22 @@ const QUICK_PROMPTS = [
   { icon: Mic2, label: "Tell my story", prompt: "Use my journal entries to write a song about my life so far" },
 ];
 
+const PROVIDER_LABELS: Record<string, string> = {
+  anthropic: "Claude",
+  openai: "OpenAI",
+  ollama: "Ollama (local)",
+  ollama_cloud: "Ollama Cloud",
+};
+
 export function ChatPanel() {
   const messages = useStore((s) => s.chatMessages);
   const addMessage = useStore((s) => s.addChatMessage);
   const setCurrentEmotion = useStore((s) => s.setCurrentEmotion);
   const setActivePanel = useStore((s) => s.setActivePanel);
   const setComposeTopic = useStore((s) => s.setComposeTopic);
+  const llmProvider = useStore((s) => s.llmProvider);
+  const llmConfigured = useStore((s) => s.llmConfigured);
+  const hasElevenlabsKey = useStore((s) => s.hasElevenlabsKey);
 
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -42,6 +52,8 @@ export function ChatPanel() {
         id: (Date.now() + 1).toString(), role: "assistant", content: resp.message,
         emotion: resp.emotion, timestamp: new Date(),
         shouldSing: resp.should_sing, songTopic: resp.song_topic,
+        fallbackUsed: resp.fallback_used, providerLabel: resp.provider_label,
+        warning: resp.fallback_used ? resp.provider_error : undefined,
       };
       addMessage(assistantMsg);
       if (resp.emotion) {
@@ -126,6 +138,11 @@ export function ChatPanel() {
                     )}
                   </div>
                 )}
+                {m.role === "assistant" && m.warning && (
+                  <div className="mt-2 ml-1 text-[11px] text-amber-400">
+                    {m.providerLabel ? `${m.providerLabel}: ` : ""}{m.warning}
+                  </div>
+                )}
                 <p className="text-[10px] text-bard-600 mt-1 mx-1">
                   {m.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </p>
@@ -171,7 +188,9 @@ export function ChatPanel() {
           </motion.button>
         </div>
         <p className="text-[10px] text-bard-600 mt-2 text-center">
-          Powered by DeepSeek / OpenAI / Ollama • ElevenLabs Music
+          {llmConfigured
+            ? `Brain: ${PROVIDER_LABELS[llmProvider] || llmProvider}${hasElevenlabsKey ? " • Voice: ElevenLabs" : ""}`
+            : "Configure your AI provider in Settings to get started"}
         </p>
       </div>
     </div>

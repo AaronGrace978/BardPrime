@@ -15,10 +15,9 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-import requests
-
 from core.config import Config
 from core.emotion_mapper import EmotionMapper
+from core.llm_client import LLMClientError, call_chat_completion, provider_label
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +36,9 @@ class ChatResponse:
     emotion: EmotionReading
     should_sing: bool = False
     song_topic: str = ""
+    fallback_used: bool = False
+    provider_error: str = ""
+    provider_label: str = ""
 
 
 BARD_SYSTEM = (
@@ -73,119 +75,35 @@ class ChatEngine:
         if len(self.history) > 20:
             self.history = self.history[-16:]
 
-        raw = self._call_llm(user_message)
+        fallback_used = False
+        provider_error = ""
+        label = provider_label(self.cfg.llm.provider)
+
+        try:
+            raw = self._call_llm()
+        except LLMClientError as exc:
+            provider_error = str(exc)
+            fallback_used = True
+            log.error("Chat provider failed: %s", exc)
+            raw = self._provider_failure_response(user_message, provider_error)
+
         response = self._parse_response(raw, user_message)
+        response.fallback_used = fallback_used
+        response.provider_error = provider_error
+        response.provider_label = label
 
         self.history.append({"role": "assistant", "content": response.message})
         return response
 
-    def _call_llm(self, user_message: str) -> str:
-        cfg = self.cfg.llm
-
-        if cfg.provider == "anthropic":
-            return self._call_anthropic()
-        if cfg.provider in ("ollama", "ollama_cloud"):
-            return self._call_ollama()
-        return self._call_openai_compat()
-
-    def _call_openai_compat(self) -> str:
-        """OpenAI and any OpenAI-compatible API."""
-        cfg = self.cfg.llm
-        base = cfg.base_url or "https://api.openai.com/v1"
-        model = cfg.model or "gpt-5.4-mini"
-        messages = [{"role": "system", "content": BARD_SYSTEM}] + self.history
-
-        try:
-            resp = requests.post(
-                f"{base}/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {cfg.api_key}",
-                },
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.8,
-                    "max_tokens": 512,
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
-        except Exception as exc:
-            log.error("OpenAI-compat chat failed: %s", exc)
-            return self._fallback_response(self.history[-1]["content"] if self.history else "")
-
-    def _call_anthropic(self) -> str:
-        """Anthropic Messages API (Claude)."""
-        cfg = self.cfg.llm
-        model = cfg.model or "claude-sonnet-4-6-20260217"
-
-        messages = []
-        for msg in self.history:
-            role = msg["role"]
-            if role == "system":
-                continue
-            if role not in ("user", "assistant"):
-                role = "user"
-            messages.append({"role": role, "content": msg["content"]})
-
-        try:
-            resp = requests.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "Content-Type": "application/json",
-                    "x-api-key": cfg.api_key,
-                    "anthropic-version": "2023-06-01",
-                },
-                json={
-                    "model": model,
-                    "max_tokens": 512,
-                    "system": BARD_SYSTEM,
-                    "messages": messages,
-                    "temperature": 0.8,
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data["content"][0]["text"]
-        except Exception as exc:
-            log.error("Anthropic chat failed: %s", exc)
-            return self._fallback_response(self.history[-1]["content"] if self.history else "")
-
-    def _call_ollama(self) -> str:
-        """Ollama local or cloud."""
-        cfg = self.cfg.llm
-
-        if cfg.provider == "ollama_cloud":
-            host = "https://ollama.com"
-            headers = {}
-            if cfg.ollama_api_key:
-                headers["Authorization"] = f"Bearer {cfg.ollama_api_key}"
-        else:
-            host = cfg.ollama_host or "http://localhost:11434"
-            headers = {}
-
-        model = cfg.ollama_model or "llama3"
-        messages = [{"role": "system", "content": BARD_SYSTEM}] + self.history
-
-        try:
-            resp = requests.post(
-                f"{host}/api/chat",
-                headers=headers,
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": False,
-                },
-                timeout=60,
-            )
-            resp.raise_for_status()
-            return resp.json()["message"]["content"]
-        except Exception as exc:
-            log.error("Ollama chat failed: %s", exc)
-            return self._fallback_response(self.history[-1]["content"] if self.history else "")
+    def _call_llm(self) -> str:
+        return call_chat_completion(
+            self.cfg.llm,
+            self.history,
+            system=BARD_SYSTEM,
+            temperature=0.8,
+            max_tokens=512,
+            timeout=45,
+        )
 
     def _parse_response(self, raw: str, user_message: str) -> ChatResponse:
         emotion = EmotionReading()
@@ -241,4 +159,19 @@ class ChatEngine:
             "I'm here and listening. Share anything with me — your stories, "
             "your feelings, your dreams. I'll weave them into music.\n"
             "[EMOTION: valence=0.2 arousal=0.4 dominance=0.5 primary=serenity]"
+        )
+
+    @staticmethod
+    def _provider_failure_response(user_message: str, provider_error: str) -> str:
+        lower = user_message.lower()
+        if any(w in lower for w in ["sing", "song", "music", "compose"]):
+            return (
+                "I want to turn that into music, but I can't reach my selected AI brain right now. "
+                f"{provider_error} Open Settings and test the connection, then ask me again.\n"
+                "[EMOTION: valence=-0.1 arousal=0.4 dominance=0.3 primary=concern]"
+            )
+        return (
+            "I can't reach my selected AI brain right now, so I can't give you a real response yet. "
+            f"{provider_error} Open Settings and test the connection, then try again.\n"
+            "[EMOTION: valence=-0.1 arousal=0.3 dominance=0.3 primary=concern]"
         )

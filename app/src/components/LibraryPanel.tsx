@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Library, Search, Heart, Play, Trash2, Music, Star, Download } from "lucide-react";
+import { AlertCircle, Download, Heart, Library, Music, Play, Search, Star, Trash2 } from "lucide-react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useStore } from "../store";
 import { api } from "../api/client";
@@ -10,10 +10,12 @@ export function LibraryPanel() {
   const setSongs = useStore((s) => s.setSongs);
   const removeSong = useStore((s) => s.removeSong);
   const toggleFav = useStore((s) => s.toggleFavorite);
-  const setCurrentSong = useStore((s) => s.setCurrentSong);
+  const setPlaybackQueue = useStore((s) => s.setPlaybackQueue);
 
   const [search, setSearch] = useState("");
   const [showFavs, setShowFavs] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("recent");
 
   useEffect(() => {
     (async () => { try { const r = await api.libraryList(); if (r.songs) setSongs(r.songs); } catch {} })();
@@ -21,12 +23,22 @@ export function LibraryPanel() {
 
   const filtered = songs.filter((s) => {
     if (showFavs && !s.favorite) return false;
+    if (statusFilter !== "all" && s.render_status !== statusFilter) return false;
     if (search) {
       const q = search.toLowerCase();
       return s.title.toLowerCase().includes(q) || s.topic.toLowerCase().includes(q) || s.genre.toLowerCase().includes(q);
     }
     return true;
+  }).sort((a, b) => {
+    if (sortBy === "duration") return (b.actual_duration_sec || b.duration_sec) - (a.actual_duration_sec || a.duration_sec);
+    if (sortBy === "title") return a.title.localeCompare(b.title);
+    if (sortBy === "engine") return a.engine.localeCompare(b.engine);
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
+
+  const handlePlay = (songId: string) => {
+    setPlaybackQueue(filtered.filter((song) => song.file_path && !song.file_missing), songId);
+  };
 
   const handleDelete = async (id: string) => {
     try { await api.libraryDelete(id); removeSong(id); } catch {}
@@ -66,6 +78,18 @@ export function LibraryPanel() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-bard-500" />
           <input className="input pl-10 text-sm" placeholder="Search songs..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input text-sm max-w-40">
+          <option value="all">All Statuses</option>
+          <option value="ready">Ready</option>
+          <option value="failed">Failed</option>
+          <option value="missing_file">Missing File</option>
+        </select>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="input text-sm max-w-32">
+          <option value="recent">Recent</option>
+          <option value="duration">Duration</option>
+          <option value="title">Title</option>
+          <option value="engine">Engine</option>
+        </select>
         <button onClick={() => setShowFavs(!showFavs)}
           className={`px-4 py-2 rounded-xl font-semibold text-sm border transition-all flex items-center gap-2 ${
             showFavs ? "bg-amber-500/15 text-amber-400 border-amber-500/30" : "bg-bard-800/60 text-bard-400 border-bard-700/40 hover:text-white"
@@ -102,17 +126,33 @@ export function LibraryPanel() {
                   <p className="text-xs text-bard-400 line-clamp-2 leading-relaxed">{song.lyrics}</p>
                 )}
 
+                {(song.render_status !== "ready" || song.file_missing || !song.file_path) && (
+                  <div className={`flex items-center gap-1.5 text-[11px] ${
+                    song.render_status === "failed" ? "text-red-300" : "text-amber-400"
+                  }`}>
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    {song.render_error || (song.file_missing ? "Audio file missing from disk" : "Audio render missing for this library item")}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 text-[10px] text-bard-600">
                   <span>{new Date(song.created_at).toLocaleDateString()}</span>
                   <span>•</span>
-                  <span>{Math.floor(song.duration_sec / 60)}:{(song.duration_sec % 60).toString().padStart(2, "0")}</span>
+                  <span>{Math.floor((song.actual_duration_sec || song.duration_sec) / 60)}:{Math.round((song.actual_duration_sec || song.duration_sec) % 60).toString().padStart(2, "0")}</span>
+                  <span>•</span>
+                  <span>{song.engine || song.render_status}</span>
                 </div>
 
                 <div className="flex gap-2">
                   <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => setCurrentSong(song)}
-                    className="flex-1 py-2 rounded-xl text-sm font-semibold bg-gold-500/15 text-gold-400 border border-gold-500/30 hover:bg-gold-500/25 transition-colors flex items-center justify-center gap-1.5">
-                    <Play className="w-3.5 h-3.5" /> Play
+                    onClick={() => song.file_path && !song.file_missing && handlePlay(song.id)}
+                    disabled={!song.file_path || song.file_missing}
+                    className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors flex items-center justify-center gap-1.5 ${
+                      song.file_path && !song.file_missing
+                        ? "bg-gold-500/15 text-gold-400 border-gold-500/30 hover:bg-gold-500/25"
+                        : "bg-bard-800/50 text-bard-500 border-bard-700/30 cursor-not-allowed"
+                    }`}>
+                    <Play className="w-3.5 h-3.5" /> {song.file_path && !song.file_missing ? "Play" : "No Audio"}
                   </motion.button>
                   {song.file_path && (
                     <button onClick={() => handleExport(song)}

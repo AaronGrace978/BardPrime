@@ -6,8 +6,10 @@ mod secrets;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::Emitter;
 use tauri::Manager;
 use tauri::State;
@@ -56,12 +58,23 @@ pub struct ComposeCompleteEvent {
     pub emotion: String,
     pub mood_tags: Vec<String>,
     pub error: String,
+    pub render_status: String,
+    pub render_error: String,
+    pub actual_duration_sec: f32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ComposeErrorEvent {
     pub job_id: String,
     pub error: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ComposePreflightEvent {
+    pub success: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+    pub output_path: String,
 }
 
 #[tauri::command]
@@ -72,6 +85,8 @@ async fn start_compose(
 ) -> Result<String, String> {
     let job_id = Uuid::new_v4().to_string();
     let cancel_flag = Arc::new(AtomicBool::new(false));
+    let progress_path = std::env::temp_dir().join(format!("bardprime-progress-{}.log", job_id));
+    let _ = fs::remove_file(&progress_path);
     {
         let mut jobs = state.jobs.lock().map_err(|e| e.to_string())?;
         jobs.insert(job_id.clone(), Arc::clone(&cancel_flag));
@@ -82,17 +97,46 @@ async fn start_compose(
     let cancel = Arc::clone(&cancel_flag);
 
     tauri::async_runtime::spawn(async move {
-        let emit_progress = |step: &str| {
-            let _ = app_handle.emit(
-                "compose_progress",
-                ComposeProgressEvent {
-                    job_id: job_id_clone.clone(),
-                    step: step.to_string(),
-                },
-            );
-        };
+        let _ = app_handle.emit(
+            "compose_progress",
+            ComposeProgressEvent {
+                job_id: job_id_clone.clone(),
+                step: "Checking your setup...".to_string(),
+            },
+        );
 
-        emit_progress("Starting composition...");
+        let progress_handle = {
+            let app_for_progress = app_handle.clone();
+            let job_for_progress = job_id_clone.clone();
+            let cancel_flag = Arc::clone(&cancel);
+            let progress_file = progress_path.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut emitted_count = 0usize;
+                loop {
+                    if cancel_flag.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    if let Ok(contents) = fs::read_to_string(&progress_file) {
+                        let steps: Vec<&str> = contents
+                            .lines()
+                            .map(|line| line.trim())
+                            .filter(|line| !line.is_empty())
+                            .collect();
+                        for step in steps.iter().skip(emitted_count) {
+                            let _ = app_for_progress.emit(
+                                "compose_progress",
+                                ComposeProgressEvent {
+                                    job_id: job_for_progress.clone(),
+                                    step: (*step).to_string(),
+                                },
+                            );
+                        }
+                        emitted_count = steps.len();
+                    }
+                    tokio::time::sleep(Duration::from_millis(400)).await;
+                }
+            })
+        };
 
         let payload = serde_json::json!({
             "action": "compose",
@@ -106,9 +150,30 @@ async fn start_compose(
             "verse_count": req.verse_count.unwrap_or(2),
             "include_bridge": req.include_bridge.unwrap_or(true),
             "custom_lyrics": req.custom_lyrics.unwrap_or_default(),
+            "progress_path": progress_path.display().to_string(),
         });
 
-        match python_bridge::call_python_cancellable(&payload, cancel).await {
+        let call_result = python_bridge::call_python_cancellable(&payload, cancel).await;
+        progress_handle.abort();
+        if let Ok(contents) = fs::read_to_string(&progress_path) {
+            let steps: Vec<&str> = contents
+                .lines()
+                .map(|line| line.trim())
+                .filter(|line| !line.is_empty())
+                .collect();
+            if let Some(last_step) = steps.last() {
+                let _ = app_handle.emit(
+                    "compose_progress",
+                    ComposeProgressEvent {
+                        job_id: job_id_clone.clone(),
+                        step: (*last_step).to_string(),
+                    },
+                );
+            }
+        }
+        let _ = fs::remove_file(&progress_path);
+
+        match call_result {
             Ok(result) => {
                 let mood_tags: Vec<String> = result["mood_tags"]
                     .as_array()
@@ -149,6 +214,17 @@ async fn start_compose(
                         emotion: result["emotion"].as_str().unwrap_or("").to_string(),
                         mood_tags,
                         error: result["error"].as_str().unwrap_or("").to_string(),
+                        render_status: result["render_status"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string(),
+                        render_error: result["render_error"]
+                            .as_str()
+                            .unwrap_or("")
+                            .to_string(),
+                        actual_duration_sec: result["actual_duration_sec"]
+                            .as_f64()
+                            .unwrap_or(0.0) as f32,
                     },
                 );
             }
@@ -172,6 +248,29 @@ async fn start_compose(
     });
 
     Ok(job_id)
+}
+
+#[tauri::command]
+async fn compose_preflight(req: ComposeRequest) -> Result<serde_json::Value, String> {
+    let payload = serde_json::json!({
+        "action": "compose_preflight",
+        "topic": req.topic,
+        "emotion": req.emotion,
+        "genre": req.genre,
+        "user_name": req.user_name.unwrap_or_default(),
+        "extra_instructions": req.extra_instructions.unwrap_or_default(),
+        "instrumental": req.instrumental.unwrap_or(false),
+        "duration_sec": req.duration_sec.unwrap_or(60.0),
+        "verse_count": req.verse_count.unwrap_or(2),
+        "include_bridge": req.include_bridge.unwrap_or(true),
+        "custom_lyrics": req.custom_lyrics.unwrap_or_default(),
+    });
+    python_bridge::call_python(&payload).await
+}
+
+#[tauri::command]
+async fn test_voice_pipeline() -> Result<serde_json::Value, String> {
+    python_bridge::call_python(&serde_json::json!({"action": "test_voice_pipeline"})).await
 }
 
 #[tauri::command]
@@ -254,6 +353,56 @@ async fn journal_list(limit: Option<u32>) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+async fn journal_update(
+    entry_id: String,
+    text: Option<String>,
+    tags: Option<Vec<String>>,
+    emotion: Option<String>,
+    people: Option<Vec<String>>,
+    places: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    let payload = serde_json::json!({
+        "action": "journal_update",
+        "entry_id": entry_id,
+        "text": text,
+        "tags": tags,
+        "emotion": emotion,
+        "people": people,
+        "places": places,
+    });
+    python_bridge::call_python(&payload).await
+}
+
+#[tauri::command]
+async fn journal_attach(entry_id: String, file_path: String) -> Result<serde_json::Value, String> {
+    let payload = serde_json::json!({
+        "action": "journal_attach",
+        "entry_id": entry_id,
+        "file_path": file_path,
+    });
+    python_bridge::call_python(&payload).await
+}
+
+#[tauri::command]
+async fn journal_import_document(
+    file_path: String,
+    emotion: Option<String>,
+    tags: Option<Vec<String>>,
+    people: Option<Vec<String>>,
+    places: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    let payload = serde_json::json!({
+        "action": "journal_import_document",
+        "file_path": file_path,
+        "emotion": emotion.unwrap_or_default(),
+        "tags": tags.unwrap_or_default(),
+        "people": people.unwrap_or_default(),
+        "places": places.unwrap_or_default(),
+    });
+    python_bridge::call_python(&payload).await
+}
+
+#[tauri::command]
 async fn journal_delete(entry_id: String) -> Result<serde_json::Value, String> {
     let payload = serde_json::json!({
         "action": "journal_delete",
@@ -306,6 +455,23 @@ async fn library_favorite(song_id: String) -> Result<serde_json::Value, String> 
 }
 
 #[tauri::command]
+async fn library_update_metadata(
+    song_id: String,
+    actual_duration_sec: Option<f32>,
+    waveform_peaks: Option<Vec<f32>>,
+    file_missing: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let payload = serde_json::json!({
+        "action": "library_update_metadata",
+        "song_id": song_id,
+        "actual_duration_sec": actual_duration_sec.unwrap_or(0.0),
+        "waveform_peaks": waveform_peaks.unwrap_or_default(),
+        "file_missing": file_missing,
+    });
+    python_bridge::call_python(&payload).await
+}
+
+#[tauri::command]
 async fn library_stats() -> Result<serde_json::Value, String> {
     python_bridge::call_python(&serde_json::json!({"action": "library_stats"})).await
 }
@@ -331,6 +497,20 @@ async fn get_emotions() -> Result<serde_json::Value, String> {
 #[tauri::command]
 async fn get_genres() -> Result<serde_json::Value, String> {
     python_bridge::call_python(&serde_json::json!({"action": "get_genres"})).await
+}
+
+#[tauri::command]
+async fn test_llm_connection() -> Result<serde_json::Value, String> {
+    python_bridge::call_python(&serde_json::json!({"action": "test_llm_connection"})).await
+}
+
+#[tauri::command]
+async fn list_ollama_models(host: Option<String>) -> Result<serde_json::Value, String> {
+    let payload = serde_json::json!({
+        "action": "list_ollama_models",
+        "host": host.unwrap_or_else(|| "http://localhost:11434".to_string()),
+    });
+    python_bridge::call_python(&payload).await
 }
 
 // ── Secrets ──────────────────────────────────────────────────────────
@@ -522,12 +702,17 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             // Composition
             start_compose,
+            compose_preflight,
             cancel_compose,
+            test_voice_pipeline,
             generate_lyrics,
             start_compose_procedural,
             // Journal
             journal_add,
             journal_list,
+            journal_update,
+            journal_attach,
+            journal_import_document,
             journal_delete,
             journal_stats,
             // Library
@@ -535,12 +720,15 @@ fn main() {
             library_search,
             library_delete,
             library_favorite,
+            library_update_metadata,
             library_stats,
             // Chat
             chat,
             // Metadata
             get_emotions,
             get_genres,
+            test_llm_connection,
+            list_ollama_models,
             // Secrets
             set_elevenlabs_key,
             set_llm_key,

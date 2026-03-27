@@ -1,8 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Brain, Music, CheckCircle, AlertCircle, Server, Globe, Cpu, Zap, Cloud, ChevronDown } from "lucide-react";
+import { X, Brain, Music, CheckCircle, AlertCircle, Server, Globe, Cpu, Zap, Cloud, ChevronDown, Palette, RefreshCw } from "lucide-react";
 import { useStore } from "../store";
+import type { ThemeId } from "../store";
 import { api } from "../api/client";
+
+const THEMES: {
+  id: ThemeId; label: string; tagline: string;
+  bg: string; card: string; accent: string; glow: string; text: string;
+}[] = [
+  { id: "bard", label: "Bard", tagline: "Mystical & scholarly",
+    bg: "#0a0812", card: "#1f1836", accent: "#d4a843", glow: "rgba(212,168,67,0.3)", text: "#c4b1eb" },
+  { id: "obsidian", label: "Obsidian", tagline: "Futuristic void",
+    bg: "#020204", card: "#0e0e16", accent: "#00e6dc", glow: "rgba(0,230,220,0.25)", text: "#a5a5be" },
+  { id: "velvet", label: "Velvet", tagline: "Jazz lounge luxury",
+    bg: "#100610", card: "#30121e", accent: "#e0b4a0", glow: "rgba(224,180,160,0.25)", text: "#dc92aa" },
+  { id: "aurora", label: "Aurora", tagline: "Northern lights",
+    bg: "#040a0e", card: "#101e28", accent: "#dc64dc", glow: "rgba(80,220,180,0.15)", text: "#5f9bb4" },
+  { id: "forge", label: "Forge", tagline: "Industrial heat",
+    bg: "#0c0a08", card: "#1c1814", accent: "#f59e28", glow: "rgba(245,158,40,0.3)", text: "#877866" },
+  { id: "sakura", label: "Sakura", tagline: "Cherry blossom",
+    bg: "#0e0810", card: "#201426", accent: "#f096aa", glow: "rgba(240,150,170,0.2)", text: "#b28abe" },
+  { id: "ocean", label: "Ocean", tagline: "Deep sea glow",
+    bg: "#040810", card: "#0c1426", accent: "#3ce1c3", glow: "rgba(60,225,195,0.2)", text: "#346ea8" },
+  { id: "noir", label: "Noir", tagline: "Cinematic drama",
+    bg: "#040404", card: "#0a0a0a", accent: "#ebebeb", glow: "rgba(200,30,40,0.15)", text: "#696969" },
+];
 
 type LLMProvider = "anthropic" | "openai" | "ollama" | "ollama_cloud";
 
@@ -71,12 +94,16 @@ export function SettingsModal() {
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
   const hasElevenlabsKey = useStore((s) => s.hasElevenlabsKey);
   const hasLlmKey = useStore((s) => s.hasLlmKey);
+  const llmConfigured = useStore((s) => s.llmConfigured);
   const setHasElevenlabsKey = useStore((s) => s.setHasElevenlabsKey);
   const setHasLlmKey = useStore((s) => s.setHasLlmKey);
+  const setLlmConfigured = useStore((s) => s.setLlmConfigured);
   const musicModel = useStore((s) => s.musicModel);
   const setMusicModel = useStore((s) => s.setMusicModel);
   const storedProvider = useStore((s) => s.llmProvider);
   const setLlmProvider = useStore((s) => s.setLlmProvider);
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
 
   const [elKey, setElKey] = useState("");
   const [llmKey, setLlmKey] = useState("");
@@ -88,13 +115,76 @@ export function SettingsModal() {
   });
   const [ollamaHost, setOllamaHost] = useState("http://localhost:11434");
   const [ollamaLocalModel, setOllamaLocalModel] = useState("llama3");
+  const [ollamaCloudModel, setOllamaCloudModel] = useState(MODEL_OPTIONS.ollama_cloud[0].id);
+  const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  const [voiceTesting, setVoiceTesting] = useState(false);
   const [llmSaved, setLlmSaved] = useState(false);
+  const [existingCloudKey, setExistingCloudKey] = useState("");
+  const [testResult, setTestResult] = useState<{ success: boolean; provider: string; model: string; message: string; error: string } | null>(null);
+  const [voiceTestResult, setVoiceTestResult] = useState<{ success: boolean; engine: string; error: string; duration_sec: number } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const configJson = await api.getLlmConfig();
+        if (!configJson) return;
+        const cfg = JSON.parse(configJson);
+        const nextProvider = (cfg.provider || storedProvider || "ollama") as LLMProvider;
+        setProvider(nextProvider);
+        const savedLocalModel = cfg.ollama_local_model || cfg.ollama_model;
+        const savedCloudModel = cfg.ollama_cloud_model || cfg.ollama_model;
+
+        if (cfg.ollama_host) setOllamaHost(cfg.ollama_host);
+        if (savedLocalModel) setOllamaLocalModel(savedLocalModel);
+        if (savedCloudModel) setOllamaCloudModel(savedCloudModel);
+        if (cfg.ollama_api_key) setExistingCloudKey(cfg.ollama_api_key);
+
+        if (nextProvider === "ollama") {
+          return;
+        }
+
+        if (nextProvider === "ollama_cloud") {
+          return;
+        }
+
+        const options = MODEL_OPTIONS[nextProvider];
+        if (options?.length) {
+          setSelectedModel(cfg.model || options[0].id);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (provider !== "ollama") return;
+    void refreshOllamaModels();
+  }, [provider]);
 
   const handleProviderChange = (p: LLMProvider) => {
     setProvider(p);
+    setTestResult(null);
     const opts = MODEL_OPTIONS[p];
-    if (opts) setSelectedModel(opts[0].id);
+    if (p !== "ollama" && p !== "ollama_cloud" && opts && !opts.some((opt) => opt.id === selectedModel)) {
+      setSelectedModel(opts[0].id);
+    }
+  };
+
+  const refreshOllamaModels = async () => {
+    setRefreshingModels(true);
+    try {
+      const result = await api.listOllamaModels(ollamaHost);
+      const names = result.models?.map((m) => m.name).filter(Boolean) || [];
+      setAvailableOllamaModels(names);
+      if (names.length > 0 && !names.includes(ollamaLocalModel)) {
+        setOllamaLocalModel(names[0]);
+      }
+    } catch {
+      setAvailableOllamaModels([]);
+    }
+    setRefreshingModels(false);
   };
 
   const saveEl = async () => {
@@ -113,29 +203,80 @@ export function SettingsModal() {
     setSaving(false);
   };
 
+  const isProviderConfigured = (nextProvider: LLMProvider) => {
+    if (nextProvider === "ollama") {
+      return Boolean(ollamaHost.trim() && ollamaLocalModel.trim());
+    }
+    if (nextProvider === "ollama_cloud") {
+      return Boolean(ollamaCloudModel && (llmKey.trim() || existingCloudKey.trim()));
+    }
+    return Boolean(selectedModel && (llmKey.trim() || hasLlmKey));
+  };
+
   const saveLlm = async () => {
     setSaving(true);
+    setTestResult(null);
     try {
       const config = JSON.stringify({
         provider,
         base_url: provider === "openai" ? "https://api.openai.com/v1" : "",
         model: provider === "anthropic" || provider === "openai" ? selectedModel : "",
         ollama_host: provider === "ollama" ? ollamaHost : "",
-        ollama_model: provider === "ollama" ? ollamaLocalModel : provider === "ollama_cloud" ? selectedModel : "",
-        ollama_api_key: provider === "ollama_cloud" && llmKey.trim() ? llmKey.trim() : "",
+        ollama_model: provider === "ollama" ? ollamaLocalModel : provider === "ollama_cloud" ? ollamaCloudModel : "",
+        ollama_local_model: ollamaLocalModel,
+        ollama_cloud_model: ollamaCloudModel,
+        ollama_api_key: provider === "ollama_cloud" ? (llmKey.trim() || existingCloudKey) : existingCloudKey,
       });
       await api.setLlmConfig(config);
       setLlmProvider(provider);
+      setLlmConfigured(isProviderConfigured(provider));
 
       if ((provider === "anthropic" || provider === "openai") && llmKey.trim()) {
         await api.setLlmKey(llmKey);
+        setHasLlmKey(true);
       }
+      if (provider === "ollama_cloud" && llmKey.trim()) setExistingCloudKey(llmKey.trim());
       setLlmKey("");
-      setHasLlmKey(true);
       setLlmSaved(true);
       setTimeout(() => setLlmSaved(false), 2000);
     } catch {}
     setSaving(false);
+  };
+
+  const handleTestLlm = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await api.testLlmConnection();
+      setTestResult(result);
+      if (result.success) setLlmConfigured(true);
+    } catch {
+      setTestResult({
+        success: false,
+        provider,
+        model: provider === "ollama" ? ollamaLocalModel : provider === "ollama_cloud" ? ollamaCloudModel : selectedModel,
+        message: "",
+        error: "Connection test failed before the provider could respond. Save your settings and try again.",
+      });
+    }
+    setTesting(false);
+  };
+
+  const handleTestVoice = async () => {
+    setVoiceTesting(true);
+    setVoiceTestResult(null);
+    try {
+      const result = await api.testVoicePipeline();
+      setVoiceTestResult(result);
+    } catch {
+      setVoiceTestResult({
+        success: false,
+        engine: "elevenlabs",
+        error: "Voice pipeline test failed before the render could complete.",
+        duration_sec: 0,
+      });
+    }
+    setVoiceTesting(false);
   };
 
   const needsApiKey = provider === "anthropic" || provider === "openai" || provider === "ollama_cloud";
@@ -168,6 +309,72 @@ export function SettingsModal() {
         </div>
 
         <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          {/* Theme */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-bard-200 flex items-center gap-2">
+              <Palette className="w-4 h-4 text-gold-400" /> Theme
+            </h3>
+            <p className="text-xs text-bard-500">Each theme transforms the entire visual experience</p>
+            <div className="grid grid-cols-4 gap-2.5">
+              {THEMES.map((t) => {
+                const active = theme === t.id;
+                return (
+                  <button key={t.id} onClick={() => setTheme(t.id)}
+                    className={`group relative overflow-hidden text-left transition-all duration-300 ${
+                      active ? "ring-2 scale-[1.02] z-10" : "hover:scale-[1.01]"
+                    }`}
+                    style={{
+                      borderRadius: "12px",
+                      border: active ? `2px solid ${t.accent}` : "1px solid rgba(255,255,255,0.06)",
+                      boxShadow: active ? `0 0 20px -4px ${t.glow}` : "none",
+                    }}>
+                    {/* Mini preview */}
+                    <div className="relative h-16 overflow-hidden" style={{
+                      background: t.bg,
+                      borderRadius: "11px 11px 0 0",
+                    }}>
+                      {/* Simulated mesh glow */}
+                      <div className="absolute inset-0 opacity-60"
+                        style={{
+                          background: `radial-gradient(ellipse at 30% 20%, ${t.glow}, transparent 60%), radial-gradient(ellipse at 70% 80%, ${t.glow.replace(/[\d.]+\)$/, '0.1)')}, transparent 50%)`,
+                        }} />
+                      {/* Mini card preview */}
+                      <div className="absolute left-2 top-3 right-2 h-6 rounded-sm"
+                        style={{
+                          background: t.card,
+                          border: `1px solid rgba(255,255,255,0.06)`,
+                        }}>
+                        <div className="flex items-center gap-1 px-1.5 h-full">
+                          <div className="w-2 h-2 rounded-full" style={{ background: t.accent }} />
+                          <div className="flex-1 h-1 rounded-full" style={{ background: t.text, opacity: 0.3 }} />
+                        </div>
+                      </div>
+                      {/* Accent glow dot */}
+                      <div className="absolute bottom-1.5 right-2 w-3 h-1 rounded-full"
+                        style={{
+                          background: t.accent,
+                          boxShadow: `0 0 8px ${t.glow}`,
+                        }} />
+                    </div>
+                    {/* Label */}
+                    <div className="px-2.5 py-2" style={{ background: t.bg }}>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ background: t.accent, boxShadow: `0 0 6px ${t.glow}` }} />
+                        <span className="text-[11px] font-bold truncate" style={{ color: active ? t.accent : "#ccc" }}>
+                          {t.label}
+                        </span>
+                      </div>
+                      <p className="text-[9px] mt-0.5 truncate" style={{ color: t.text }}>
+                        {t.tagline}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
           {/* LLM Provider */}
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-bard-200 flex items-center gap-2">
@@ -203,26 +410,73 @@ export function SettingsModal() {
                   </div>
                   <div>
                     <label className="block text-xs text-bard-400 mb-1">Model</label>
-                    <input className="input text-sm" value={ollamaLocalModel} onChange={(e) => setOllamaLocalModel(e.target.value)} placeholder="llama3, mistral, deepseek-r1..." />
+                    {availableOllamaModels.length > 0 ? (
+                      <div className="relative">
+                        <select
+                          value={ollamaLocalModel}
+                          onChange={(e) => setOllamaLocalModel(e.target.value)}
+                          className="input text-sm w-full appearance-none pr-8 bg-bard-800/60 border-bard-700/50 text-white cursor-pointer"
+                        >
+                          {availableOllamaModels.map((modelName) => (
+                            <option key={modelName} value={modelName}>{modelName}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3.5 h-3.5 text-bard-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    ) : (
+                      <input className="input text-sm" value={ollamaLocalModel} onChange={(e) => setOllamaLocalModel(e.target.value)} placeholder="llama3.2, mistral, deepseek-r1..." />
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-bard-500">
                     <Server className="w-3.5 h-3.5" />
                     Runs 100% locally. No API key needed.
                   </div>
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="text-bard-500">
+                      {availableOllamaModels.length > 0
+                        ? `Installed models: ${availableOllamaModels.join(", ")}`
+                        : "No installed models detected yet. Pull one in Ollama, then refresh."}
+                    </span>
+                    <button
+                      onClick={refreshOllamaModels}
+                      disabled={refreshingModels}
+                      className="flex items-center gap-1.5 text-bard-300 hover:text-white disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${refreshingModels ? "animate-spin" : ""}`} />
+                      Refresh
+                    </button>
+                  </div>
                   {llmSaved && <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Config saved!</div>}
-                  <button onClick={saveLlm} disabled={saving}
-                    className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg disabled:opacity-50">
-                    Save Config
-                  </button>
+                  {testResult && (
+                    <div className={`text-xs rounded-lg px-3 py-2 border ${
+                      testResult.success ? "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" : "text-amber-300 border-amber-500/30 bg-amber-500/10"
+                    }`}>
+                      {testResult.success ? `${testResult.provider} connected: ${testResult.message}` : testResult.error}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={saveLlm} disabled={saving}
+                      className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-purple-500 to-violet-500 text-white shadow-lg disabled:opacity-50">
+                      Save Config
+                    </button>
+                    <button onClick={handleTestLlm} disabled={saving || testing || !isProviderConfigured("ollama")}
+                      className="w-full py-2.5 rounded-xl font-semibold text-sm bg-bard-700/70 text-bard-100 border border-bard-600/40 disabled:opacity-50">
+                      {testing ? "Testing..." : "Test Connection"}
+                    </button>
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div key={provider} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                   className="space-y-3 p-4 bg-bard-800/40 rounded-xl border border-bard-700/30">
-                  <ModelSelect provider={provider} value={selectedModel} onChange={setSelectedModel} />
+                  <ModelSelect
+                    provider={provider}
+                    value={provider === "ollama_cloud" ? ollamaCloudModel : selectedModel}
+                    onChange={provider === "ollama_cloud" ? setOllamaCloudModel : setSelectedModel}
+                  />
                   <div className="flex items-center gap-2">
                     {llmSaved ? (
                       <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Config saved!</div>
-                    ) : hasLlmKey && storedProvider === provider ? (
+                    ) : ((provider === "ollama_cloud" && (llmKey.trim() || existingCloudKey.trim())) || (provider !== "ollama_cloud" && hasLlmKey && storedProvider === provider)) ? (
                       <div className="flex items-center gap-1.5 text-emerald-400 text-xs"><CheckCircle className="w-3.5 h-3.5" /> Configured</div>
                     ) : (
                       <div className="flex items-center gap-1.5 text-amber-400 text-xs"><AlertCircle className="w-3.5 h-3.5" /> API key required</div>
@@ -238,13 +492,26 @@ export function SettingsModal() {
                   {provider === "ollama_cloud" && (
                     <div className="flex items-center gap-2 text-xs text-bard-500">
                       <Cloud className="w-3.5 h-3.5" />
-                      Get your key at ollama.com/settings/keys. Run `ollama signin` first.
+                      {existingCloudKey ? "Cloud key saved. Enter a new one only if you want to replace it." : "Get your key at ollama.com/settings/keys. Run `ollama signin` first."}
                     </div>
                   )}
-                  <button onClick={saveLlm} disabled={saving || (needsApiKey && !llmKey.trim() && !(hasLlmKey && storedProvider === provider))}
-                    className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg disabled:opacity-50">
-                    Save Config
-                  </button>
+                  {testResult && (
+                    <div className={`text-xs rounded-lg px-3 py-2 border ${
+                      testResult.success ? "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" : "text-amber-300 border-amber-500/30 bg-amber-500/10"
+                    }`}>
+                      {testResult.success ? `${testResult.provider} connected: ${testResult.message}` : testResult.error}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={saveLlm} disabled={saving || (needsApiKey && !llmKey.trim() && !(provider === "ollama_cloud" ? existingCloudKey.trim() : hasLlmKey && storedProvider === provider))}
+                      className="w-full py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-lg disabled:opacity-50">
+                      Save Config
+                    </button>
+                    <button onClick={handleTestLlm} disabled={saving || testing || !isProviderConfigured(provider)}
+                      className="w-full py-2.5 rounded-xl font-semibold text-sm bg-bard-700/70 text-bard-100 border border-bard-600/40 disabled:opacity-50">
+                      {testing ? "Testing..." : "Test Connection"}
+                    </button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -271,6 +538,22 @@ export function SettingsModal() {
                 <button onClick={saveEl} disabled={saving || !elKey.trim()}
                   className="px-4 py-2 rounded-xl font-semibold text-sm bg-amber-500 text-bard-950 disabled:opacity-50">Save</button>
               </div>
+              {voiceTestResult && (
+                <div className={`text-xs rounded-lg px-3 py-2 border ${
+                  voiceTestResult.success ? "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" : "text-amber-300 border-amber-500/30 bg-amber-500/10"
+                }`}>
+                  {voiceTestResult.success
+                    ? `Voice pipeline ready via ${voiceTestResult.engine}.`
+                    : voiceTestResult.error}
+                </div>
+              )}
+              <button
+                onClick={handleTestVoice}
+                disabled={voiceTesting || !hasElevenlabsKey}
+                className="w-full py-2.5 rounded-xl font-semibold text-sm bg-bard-700/70 text-bard-100 border border-bard-600/40 disabled:opacity-50"
+              >
+                {voiceTesting ? "Testing Voice..." : "Test Voice Pipeline"}
+              </button>
             </div>
           </section>
 

@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wand2, Music, Play, RefreshCw, ChevronDown, Mic2, FileAudio, Sparkles, Volume2, XCircle } from "lucide-react";
+import { Wand2, Music, Play, RefreshCw, ChevronDown, Mic2, FileAudio, Sparkles, Volume2, XCircle, CheckCircle2 } from "lucide-react";
 import { useStore } from "../store";
 import { api } from "../api/client";
 import { MoodSelector } from "./MoodSelector";
@@ -31,6 +31,8 @@ export function ComposePanel() {
   const [lyrics, setLyrics] = useState("");
   const [userName, setUserName] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
+  const [composeError, setComposeError] = useState("");
+  const [composeWarnings, setComposeWarnings] = useState<string[]>([]);
 
   const composing = useStore((s) => s.composing);
   const progress = useStore((s) => s.composeProgress);
@@ -41,8 +43,22 @@ export function ComposePanel() {
   const setCurrentSong = useStore((s) => s.setCurrentSong);
   const composeTopic = useStore((s) => s.composeTopic);
   const setComposeTopic = useStore((s) => s.setComposeTopic);
+  const hasElevenlabsKey = useStore((s) => s.hasElevenlabsKey);
 
   const [jobId, setJobId] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (composing) {
+      setElapsed(0);
+      timerRef.current = setInterval(() => setElapsed((t) => t + 1), 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [composing]);
 
   useEffect(() => {
     if (composeTopic) {
@@ -55,17 +71,31 @@ export function ComposePanel() {
 
   const handleCompose = async () => {
     if (!topic.trim() || composing) return;
-    setComposing(true);
+    setComposeError("");
+    setComposeWarnings([]);
     setLastResult(null);
     try {
-      const id = await api.startCompose({
+      const req = {
         topic, emotion, genre, user_name: userName || undefined,
         extra_instructions: extraInstructions || undefined,
         instrumental, duration_sec: duration,
         custom_lyrics: lyrics || undefined,
+      };
+      const preflight = await api.composePreflight(req);
+      if (!preflight.success) {
+        setComposeError(preflight.errors.join(" "));
+        return;
+      }
+      setComposeWarnings(preflight.warnings || []);
+      setComposing(true);
+      const id = await api.startCompose({
+        ...req,
       });
       setJobId(id);
-    } catch { setComposing(false); }
+    } catch {
+      setComposeError("BardPrime couldn't start the composition job.");
+      setComposing(false);
+    }
   };
 
   const handleCancel = async () => {
@@ -93,6 +123,16 @@ export function ComposePanel() {
         {/* Main input */}
         <div className="col-span-2 space-y-4">
           <div className="card p-6 space-y-5">
+            {composeError && (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {composeError}
+              </div>
+            )}
+            {composeWarnings.length > 0 && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                {composeWarnings.join(" ")}
+              </div>
+            )}
             <label>
               <span className="text-sm font-semibold text-bard-200 mb-2 flex items-center gap-2">
                 <Music className="w-4 h-4 text-gold-400" /> What should I sing about?
@@ -156,7 +196,19 @@ export function ComposePanel() {
             {lastResult && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }} className="card p-6 space-y-4">
-                <h3 className="font-semibold text-white flex items-center gap-2">
+                {lastResult.success && (
+                <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                  className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold text-emerald-300">Song completed!</span>
+                    <p className="text-xs text-emerald-400/70">Your song is ready to play</p>
+                  </div>
+                </motion.div>
+              )}
+              <h3 className="font-semibold text-white flex items-center gap-2">
                   <FileAudio className="w-5 h-5 text-emerald-400" />
                   {lastResult.title || "Generated Track"}
                 </h3>
@@ -169,6 +221,18 @@ export function ComposePanel() {
                     <pre className="text-sm text-bard-200 mt-2 whitespace-pre-wrap font-body leading-relaxed max-h-40 overflow-y-auto">{lastResult.lyrics}</pre>
                   </div>
                 )}
+                <div className="flex items-center gap-2 text-[11px] text-bard-500">
+                  <span className={`px-2 py-1 rounded-full border ${
+                    lastResult.render_status === "ready"
+                      ? "text-emerald-300 border-emerald-500/30 bg-emerald-500/10"
+                      : "text-amber-300 border-amber-500/30 bg-amber-500/10"
+                  }`}>
+                    {lastResult.render_status || (lastResult.success ? "ready" : "failed")}
+                  </span>
+                  {lastResult.actual_duration_sec > 0 && (
+                    <span>{Math.floor(lastResult.actual_duration_sec / 60)}:{Math.round(lastResult.actual_duration_sec % 60).toString().padStart(2, "0")} actual</span>
+                  )}
+                </div>
                 {lastResult.success && lastResult.file_path && (
                   <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                     onClick={() => setCurrentSong({
@@ -177,6 +241,8 @@ export function ComposePanel() {
                       genre: lastResult.genre, mood_tags: lastResult.mood_tags,
                       duration_sec: lastResult.duration_sec, file_path: lastResult.file_path,
                       engine: lastResult.engine, created_at: new Date().toISOString(), favorite: false, notes: "",
+                      render_status: lastResult.render_status, render_error: lastResult.render_error,
+                      actual_duration_sec: lastResult.actual_duration_sec, waveform_peaks: [], file_missing: false,
                     })}
                     className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/20">
                     <Play className="w-5 h-5" /> Play Song
@@ -193,6 +259,12 @@ export function ComposePanel() {
             <h3 className="font-semibold text-white flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-gold-400" /> Song Settings
             </h3>
+
+            {!instrumental && !hasElevenlabsKey && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                Singing requires an `ElevenLabs` key in Settings. Without it, BardPrime can still write lyrics, but it will not render a full vocal track.
+              </div>
+            )}
 
             <div>
               <label className="block text-sm text-bard-400 mb-1">Your Name</label>
@@ -238,8 +310,13 @@ export function ComposePanel() {
           {/* Compose / Cancel buttons */}
           {composing ? (
             <div className="space-y-2">
-              <div className="w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 text-lg bg-bard-700/40 text-bard-400">
-                <RefreshCw className="w-5 h-5 animate-spin" />{progress || "Composing..."}
+              <div className="w-full py-4 rounded-2xl font-bold flex flex-col items-center justify-center gap-1 bg-bard-700/40 text-bard-400">
+                <div className="flex items-center gap-2 text-lg">
+                  <RefreshCw className="w-5 h-5 animate-spin" />{progress || "Composing..."}
+                </div>
+                <span className="text-xs font-normal text-bard-500">
+                  {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, "0")} elapsed
+                </span>
               </div>
               <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                 onClick={handleCancel}
